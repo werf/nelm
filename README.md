@@ -495,12 +495,12 @@ werf.io/ownership: anyone|release
 ```
 Default:
 ```
-"release" for general resources, "anyone" for hooks and CRDs from "crds/" directory
+"release" for general resources, "anyone" for hooks, CRDs from "crds/" directory and the release Namespace
 ```
 
 ### `werf.io/deploy-on` annotation 
 
-Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
+Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. `delete` stands for release uninstall. Has precedence over `helm.sh/hook`.
 
 Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
@@ -510,7 +510,7 @@ werf.io/deploy-on: pre-install,upgrade
 ```
 Format:
 ```
-werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-uninstall][,uninstall][,post-uninstall]
+werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-delete][,delete][,post-delete]
 ```
 Default:
 ```
@@ -519,7 +519,7 @@ Default:
 
 ### `werf.io/delete-policy` annotation 
 
-Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when its update fails because an immutable field changed (for example, `field is immutable` for a Job selector, or `updates to statefulset spec for fields other than ... are forbidden` for a StatefulSet), `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when its update fails because an immutable field changed (for example, `field is immutable` for a Job selector, or `updates to statefulset spec for fields other than ... are forbidden` for a StatefulSet), `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if its readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
@@ -531,7 +531,7 @@ werf.io/delete-policy: [before-creation][,before-creation-if-immutable][,succeed
 ```
 Default:
 ```
-nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
+nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks ("before-creation" if it is not set either)
 ```
 
 ### `werf.io/resource-policy` annotation
@@ -574,7 +574,7 @@ werf.io/delete-propagation: Foreground|Background|Orphan
 ```
 Default:
 ```
-Foreground
+the value of the --delete-propagation option, which defaults to Background
 ```
 
 ### `werf.io/triggers-release` annotation
@@ -638,7 +638,7 @@ FailWholeDeployProcessImmediately
 
 ### `werf.io/failures-allowed-per-replica` annotation 
 
-Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
+Set the number of allowed errors per replica during resource tracking. The number is multiplied by `spec.replicas`, if the resource has it. When exceeded, act according to `werf.io/fail-mode`. Has no effect on Jobs and on resources with `restartPolicy: Never` in the Pod template: no errors are allowed for them.
 
 Example:
 ```yaml
@@ -650,12 +650,12 @@ werf.io/failures-allowed-per-replica: "<any positive number or zero>"
 ```
 Default:
 ```
-1
+1 for Deployment, StatefulSet, DaemonSet and Flagger Canary, 0 for others
 ```
 
 ### `werf.io/no-activity-timeout` annotation 
 
-Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
+Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time. Has no effect on Deployments, StatefulSets, DaemonSets, Jobs, Pods and Flagger Canaries, which have their own trackers.
 
 Example:
 ```yaml
@@ -852,7 +852,7 @@ Format:
 
 ### `dump_debug` function 
 
-If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
+If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or even root context. Never prints to the templating output.
 
 Example:
 ```
