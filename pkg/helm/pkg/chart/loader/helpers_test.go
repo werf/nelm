@@ -13,33 +13,38 @@ import (
 )
 
 // assertNoTSDependencies checks that neither the chart nor its only subchart has files installed
-// by a package manager into ts/, while their TypeScript sources are kept.
+// by a package manager into ts/, while their TypeScript sources and yarn project files are kept.
 func assertNoTSDependencies(t *testing.T, loaded helmchart.Charter) {
 	t.Helper()
 
 	accessor, err := helmchart.NewAccessor(loaded)
 	require.NoError(t, err)
 
-	names := append(testFileNames(accessor.Files()), testFileNames(accessor.RuntimeFiles())...)
-	assert.Contains(t, names, "ts/src/index.ts")
-	assertNoTSDependencyNames(t, names)
+	assertTSDependencyNames(t, append(testFileNames(accessor.Files()), testFileNames(accessor.RuntimeFiles())...))
 
 	require.Len(t, accessor.Dependencies(), 1)
 
 	dep, err := helmchart.NewAccessor(accessor.Dependencies()[0])
 	require.NoError(t, err)
 
-	depNames := append(testFileNames(dep.Files()), testFileNames(dep.RuntimeFiles())...)
-	assert.Contains(t, depNames, "ts/src/index.ts")
-	assertNoTSDependencyNames(t, depNames)
+	assertTSDependencyNames(t, append(testFileNames(dep.Files()), testFileNames(dep.RuntimeFiles())...))
 }
 
-func assertNoTSDependencyNames(t *testing.T, names []string) {
+func assertTSDependencyNames(t *testing.T, names []string) {
 	t.Helper()
 
+	assert.Contains(t, names, "ts/src/index.ts")
+
+	for path := range tsProjectYarnFiles {
+		assert.Contains(t, names, path)
+	}
+
 	for _, name := range names {
-		for _, part := range []string{"node_modules", ".yarn", ".pnp."} {
-			assert.NotContains(t, name, part)
+		assert.NotContains(t, name, "node_modules")
+		assert.NotContains(t, name, ".pnp.")
+
+		for _, skipped := range []string{"cache", "unplugged", "__virtual__", "install-state.gz", "build-state.yml"} {
+			assert.NotContains(t, name, ".yarn/"+skipped)
 		}
 	}
 }

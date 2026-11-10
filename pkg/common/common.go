@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -251,6 +252,10 @@ var (
 	DefaultDockerConfig                                 = filepath.Join(userHomeDir(), ".docker")
 	DefaultPlanArtifactLifetime                         = 2 * time.Hour
 	DefaultResourceValidationCacheLifetime              = 48 * time.Hour
+
+	// chartTSIgnoredYarnFiles are what yarn installs into .yarn, as opposed to releases, patches,
+	// plugins, sdks and versions, which projects commit.
+	chartTSIgnoredYarnFiles = []string{"__virtual__", "build-state.yml", "cache", "install-state.gz", "unplugged"}
 )
 
 // Type of the current operation.
@@ -326,14 +331,20 @@ func HelmOptionsFromContext(ctx context.Context) HelmOptions {
 
 // IsChartTSDependencyFileInTree reports whether name, slash-separated and relative to the chart
 // root, is where a package manager installs the dependencies of the TypeScript chart, in the chart or
-// in a subchart under charts/: ts/node_modules and, for yarn Plug'n'Play, ts/.yarn and ts/.pnp.*, or
-// is in them. The chart loaders leave these out: the dependencies are bundled, and their files,
-// native binaries included, would otherwise end up in the chart archive and in the release.
+// in a subchart under charts/: ts/node_modules and, for yarn Plug'n'Play, ts/.pnp.* and the parts of
+// ts/.yarn that yarn recommends to ignore, or is in them. The chart loaders leave these out: the
+// dependencies are bundled, and their files, native binaries included, would otherwise end up in the
+// chart archive and in the release.
 func IsChartTSDependencyFileInTree(name string) bool {
 	for {
 		if tsPath, ok := strings.CutPrefix(name, ChartTSSourceDir); ok {
-			topName, _, _ := strings.Cut(tsPath, "/")
-			if topName == "node_modules" || topName == ".yarn" || strings.HasPrefix(topName, ".pnp.") {
+			topName, rest, _ := strings.Cut(tsPath, "/")
+			yarnName, _, _ := strings.Cut(rest, "/")
+
+			switch {
+			case topName == "node_modules", strings.HasPrefix(topName, ".pnp."):
+				return true
+			case topName == ".yarn" && slices.Contains(chartTSIgnoredYarnFiles, yarnName):
 				return true
 			}
 		}

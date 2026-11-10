@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 
 	nelmcommon "github.com/werf/nelm/v2/pkg/common"
@@ -16,12 +17,24 @@ import (
 
 // tsDependencyFiles are files that npm, pnpm and yarn berry with Plug'n'Play install into ts/.
 var tsDependencyFiles = map[string]string{
-	"ts/node_modules/dep/index.js": "module.exports = {};\n",
-	"ts/node_modules/dep/dep.prov": "provenance\n",
-	"ts/.yarn/install-state.gz":    "state\n",
-	"ts/.yarn/cache/dep.zip":       "zip\n",
-	"ts/.pnp.cjs":                  "pnp\n",
-	"ts/.pnp.loader.mjs":           "pnp loader\n",
+	"ts/node_modules/dep/index.js":                "module.exports = {};\n",
+	"ts/node_modules/dep/dep.prov":                "provenance\n",
+	"ts/.yarn/install-state.gz":                   "state\n",
+	"ts/.yarn/build-state.yml":                    "state\n",
+	"ts/.yarn/cache/dep.zip":                      "zip\n",
+	"ts/.yarn/__virtual__/dep-virtual/0/index.js": "virtual\n",
+	"ts/.pnp.cjs":                                 "pnp\n",
+	"ts/.pnp.loader.mjs":                          "pnp loader\n",
+}
+
+// tsProjectYarnFiles are what yarn recommends to commit, which projects refer to in .yarnrc.yml or
+// package.json.
+var tsProjectYarnFiles = map[string]string{
+	"ts/.yarn/releases/yarn-4.18.1.cjs": "yarn\n",
+	"ts/.yarn/patches/dep.patch":        "patch\n",
+	"ts/.yarn/plugins/plugin.cjs":       "plugin\n",
+	"ts/.yarn/sdks/typescript/lib/x.js": "sdk\n",
+	"ts/.yarn/versions/abc.yml":         "version\n",
 }
 
 // tsDependencyBigFiles are larger than a chart file may be, as native binaries of dependencies and
@@ -88,7 +101,7 @@ func testChartWithTSDependencies(apiVersion string) map[string]string {
 		"charts/sub/ts/src/index.ts": "export {};\n",
 	}
 
-	for path, content := range tsDependencyFiles {
+	for path, content := range lo.Assign(tsDependencyFiles, tsProjectYarnFiles) {
 		files[path] = content
 		files["charts/sub/"+path] = content
 	}
