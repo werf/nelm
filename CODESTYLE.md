@@ -55,6 +55,20 @@
 
 * Instead of raw mutexes use the transactional `Concurrent{}` helper.
 
+## Nelm-specific
+
+* CLI commands only map flags to `<Action>Options` (`cli.AddFlag`) and call the action; all logic lives in the action. Model new commands on `release install`.
+* Remove options that do nothing instead of deprecating them.
+* Nelm is also a library: no CLI flag names (`--set`) in errors, logs or comments under `pkg/`. Say "set values".
+* No werf concepts in Nelm code, messages or docs (werf, its commands, "env", "service values"). Use Nelm terms: extra values, runtime annotations. Data names like `.werf-data` or `werf.io/*` are fine.
+* `pkg/helm` is an upstream fork: keep diffs to upstream files minimal, never touch upstream comments, put Nelm code into `*_nelm.go` / `*_nelm_test.go`.
+* Check `go.mod` for a library before hand-writing a parser, regex or algorithm.
+* Fix bugs where they live, not with workarounds in consumers. Prefer rejecting odd input to re-plumbing.
+* Keep comments and key order when rewriting user YAML (`goccy/go-yaml`).
+* Reason about compatibility per major version only.
+* Delete what a change leaves unused, in werf and common-go too.
+* No README or doc sections nobody asked for.
+
 ## Go standard guidelines
 
 Follow these two guides:
