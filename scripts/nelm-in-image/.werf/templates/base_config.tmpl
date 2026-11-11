@@ -1,0 +1,92 @@
+project: nelm-in-image
+configVersion: 1
+
+build:
+  cacheVersion: "11-11-26"
+  platform:
+    - linux/amd64
+    - linux/arm64
+cleanup:
+  keepPolicies:
+  - references:  
+      branch: main
+    imagesPerReference:
+      last: 1
+---
+
+{{- $uniqueChannelVersions := list -}}
+{{- $uniqueArtifactVersions := list -}}
+
+{{/* set up default channel version  */}}
+{{- $trdlChannelsValues := .Files.Get "../../trdl_channels.yaml" | fromYaml -}}
+{{- range $_, $groupObject := $trdlChannelsValues.groups }}
+  {{- if eq $groupObject.name $.DefaultGroupName }}
+    {{- range $_, $channelObject := $groupObject.channels }}
+      {{- if eq $channelObject.name $.DefaultChannelName}}
+        {{ $_ := set $ "DefaultChannelVersion" $channelObject.version }}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+{{- end}}
+
+{{ $_ := set $ "ChannelVersion" $.DefaultChannelVersion }}
+
+{{- range $distroInd, $distroName := $.Distros }}
+  {{ $_ := set $ "DistroName" $distroName }}
+  {{- include "<app>-<distro>" $ }}
+{{- end }}
+
+{{- include "latest" $ }}
+{{- include "latest-node" $ }}
+
+{{- $trdlChannelsValues := .Files.Get "../../trdl_channels.yaml" | fromYaml -}}
+{{- range $groupInd, $groupObject := $trdlChannelsValues.groups }}
+  {{ $_ := set $ "GroupName" $groupObject.name }}
+
+  {{- range $_, $channelObject := $groupObject.channels }}
+    {{- if not (has $channelObject.version $uniqueArtifactVersions) }}
+      {{ $uniqueArtifactVersions = append $uniqueArtifactVersions $channelObject.version }}
+      {{ $_ := set $ "ChannelName" $channelObject.name }}
+      {{ $_ := set $ "ChannelVersion" $channelObject.version }}
+      {{- include "trdl-<app>-<version>" $ }}
+      {{- if contains "+" $.ChannelVersion }}
+        {{ $_ := set $ "normalizedChannelVersion" ($.ChannelVersion | replace "+" ".") }}
+      {{- else }}
+        {{ $_ := set $ "normalizedChannelVersion" $.ChannelVersion }}
+      {{- end}}
+      {{- include "<version>" $ }}
+      {{- include "<version>-node" $ }}
+    {{- end }}
+
+    {{ $_ := set $ "ChannelName" $channelObject.name }}
+    {{ $_ := set $ "ChannelVersion" $channelObject.version }}
+
+{{- include "<group>-<channel>" $ }}
+{{- include "<group>-<channel>-node" $ }}
+
+    {{- range $distroInd, $distroName := $.Distros }}
+      {{ $_ := set $ "DistroName" $distroName }}
+        {{- if not (has (printf "%s-%s" $.ChannelVersion $.DistroName) $uniqueChannelVersions) }}
+          {{ $uniqueChannelVersions = append $uniqueChannelVersions (printf "%s-%s" $.ChannelVersion $.DistroName) }}
+          {{- include "<version>-<distro>" $ }}
+        {{- end }}
+
+{{- include "<group>-<channel>-<distro>" $ }}
+    {{- end }}
+  {{- end }}
+
+  {{/* <group> images follow the default channel of the group, not the last channel of the loop above. */}}
+  {{- range $_, $channelObject := $groupObject.channels }}
+    {{- if eq $channelObject.name $.DefaultChannelName }}
+      {{ $_ := set $ "ChannelVersion" $channelObject.version }}
+    {{- end }}
+  {{- end }}
+
+  {{- range $distroInd, $distroName := $.Distros }}
+    {{ $_ := set $ "DistroName" $distroName }}
+
+{{- include "<group>-<distro>" $ }}
+  {{- end }}
+{{- include "<group>" $ }}
+{{- include "<group>-node" $ }}
+{{- end }}
