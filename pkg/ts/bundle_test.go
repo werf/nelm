@@ -83,6 +83,17 @@ func TestBuildBundle(t *testing.T) {
 		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `Could not resolve "missing-package"`)
+		assert.Contains(t, err.Error(), "install the dependencies of "+tsDir)
+		assert.Contains(t, err.Error(), "lock file in ts/ or in the workspace root")
+	})
+
+	t.Run("does not suggest installing dependencies for other errors", func(t *testing.T) {
+		tsDir := filepath.Join(copyTestChart(t), "ts")
+		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("export const broken = ;\n"), 0o644))
+
+		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "install the dependencies")
 	})
 }
 
@@ -146,7 +157,7 @@ func TestBundleChartsRecursiveInstallsDependencies(t *testing.T) {
 	assert.Contains(t, err.Error(), `Could not resolve "fake-chart-ts-sdk"`)
 
 	run := readStubRun(t, binDir, "npm")
-	assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}, run.args)
+	assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund", "--workspaces=false"}, run.args)
 	assert.Equal(t, resolvePath(t, filepath.Join(chartDir, "ts")), run.dir)
 }
 

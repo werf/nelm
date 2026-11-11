@@ -4,10 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,556 +18,120 @@ func TestEnsureDependencies(t *testing.T) {
 	const packageJSON = `{"type": "module", "private": true}`
 
 	npmCI := []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}
-
-	// Keeps npm from installing the workspace of an ancestor that does not include ts.
-	npmCIOutsideWorkspace := append(slices.Clone(npmCI), "--workspaces=false")
-	pnpmFrozen := []string{"install", "--frozen-lockfile", "--ignore-scripts", "--ignore-workspace"}
+	pnpmFrozen := []string{"install", "--frozen-lockfile", "--ignore-scripts"}
+	yarnClassicFrozen := []string{"install", "--frozen-lockfile", "--ignore-scripts"}
+	yarnBerryImmutable := []string{"install", "--immutable", "--mode=skip-build"}
+	bunFrozen := []string{"install", "--frozen-lockfile", "--ignore-scripts"}
 
 	for name, test := range map[string]struct {
-		files          map[string]string
-		tsDir          string
-		managersInPath []string
-		createLockFile bool
-		wantManager    string
-		wantArgs       []string
+		files       map[string]string
+		tsDir       string
+		wantManager string
+		wantArgs    []string
+		wantDir     string
 	}{
-		"runs npm ci with package-lock.json": {
+		"runs npm ci in ts with package-lock.json there, isolated from workspaces above": {
 			files:       map[string]string{"ts/package-lock.json": "{}"},
 			wantManager: "npm",
-			wantArgs:    npmCI,
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
-		"runs npm ci with npm-shrinkwrap.json": {
+		"runs npm ci in ts with npm-shrinkwrap.json there": {
 			files:       map[string]string{"ts/npm-shrinkwrap.json": "{}"},
 			wantManager: "npm",
-			wantArgs:    npmCI,
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
-		"runs a frozen pnpm install ignoring workspaces above with pnpm-lock.yaml": {
+		"runs a frozen pnpm install in ts with pnpm-lock.yaml there, isolated from workspaces above": {
 			files:       map[string]string{"ts/pnpm-lock.yaml": ""},
 			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
+			wantArgs:    append(pnpmFrozen, "--ignore-workspace"),
 		},
-		"runs a frozen pnpm install in ts that is a pnpm workspace itself": {
-			files:       map[string]string{"ts/pnpm-lock.yaml": "", "ts/pnpm-workspace.yaml": "packages:\n  - 'lib/*'\n"},
-			wantManager: "pnpm",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"runs a frozen yarn classic install with yarn.lock": {
+		"runs a frozen yarn classic install in ts with yarn.lock there": {
 			files:       map[string]string{"ts/yarn.lock": "# yarn lockfile v1\n"},
 			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
+			wantArgs:    yarnClassicFrozen,
 		},
-		"runs an immutable yarn berry install with yarn.lock and .yarnrc.yml": {
-			files:       map[string]string{"ts/yarn.lock": "", "ts/.yarnrc.yml": ""},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
-		},
-		"takes yarn berry from __metadata in yarn.lock": {
+		"runs an immutable yarn berry install with __metadata in yarn.lock": {
 			files:       map[string]string{"ts/yarn.lock": "__metadata:\n  version: 8\n  cacheKey: 10c0\n"},
 			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
+			wantArgs:    yarnBerryImmutable,
 		},
-		"runs a frozen bun install with bun.lock": {
+		"runs a frozen bun install in ts with bun.lock there": {
 			files:       map[string]string{"ts/bun.lock": ""},
 			wantManager: "bun",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
+			wantArgs:    bunFrozen,
 		},
-		"runs a frozen bun install with bun.lockb": {
+		"runs a frozen bun install in ts with bun.lockb there": {
 			files:       map[string]string{"ts/bun.lockb": ""},
 			wantManager: "bun",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
+			wantArgs:    bunFrozen,
 		},
-		"takes the package manager from packageManager over lock files of others": {
-			files: map[string]string{
-				"ts/package.json":      `{"packageManager": "pnpm@10.20.0+sha512.abc"}`,
-				"ts/package-lock.json": "{}",
-				"ts/pnpm-lock.yaml":    "",
-				"ts/yarn.lock":         "",
-			},
-			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
+		"takes package-lock.json and npm-shrinkwrap.json together as npm": {
+			files:       map[string]string{"ts/package-lock.json": "{}", "ts/npm-shrinkwrap.json": "{}"},
+			wantManager: "npm",
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
-		"takes yarn berry from the version in packageManager": {
-			files: map[string]string{
-				"ts/package.json": `{"packageManager": "yarn@4.10.3"}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
-		},
-		"takes yarn classic from the version in packageManager": {
-			files: map[string]string{
-				"ts/package.json": `{"packageManager": "yarn@1.22.22"}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn classic from a version range in devEngines below 2": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": "<2.0.0"}}}`,
-				"ts/yarn.lock":    "# yarn lockfile v1\n",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn classic from a caret range of 1 in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": "^1"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn classic from an x-range of 1 in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": "1.x"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn classic from a range starting below 2 in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": "^4.0.0 || >=1.22.0"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn classic from a range starting at a prerelease of 1 in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">=1.22.0-rc-4 <2"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn berry from a range greater than 1 in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">1"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
-		},
-		"takes yarn classic from a range greater than a 1.x version in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">1.22"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes yarn berry from a range starting at 2 or above in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">=3.2.0 <5"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
-		},
-		"takes yarn berry from the version range in devEngines": {
-			files: map[string]string{
-				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": "^4.0.0"}}}`,
-				"ts/yarn.lock":    "",
-			},
-			wantManager: "yarn",
-			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
-		},
-		"takes the package manager from devEngines": {
-			files: map[string]string{
-				"ts/package.json":   `{"devEngines": {"packageManager": {"name": "bun", "version": "^1.3.0"}}}`,
-				"ts/pnpm-lock.yaml": "",
-				"ts/bun.lock":       "",
-			},
-			wantManager: "bun",
-			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
-		},
-		"takes the first alternative from devEngines that has a lock file": {
-			files: map[string]string{
-				"ts/package.json":      `{"devEngines": {"packageManager": [{"name": "pnpm"}, {"name": "npm"}]}}`,
-				"ts/package-lock.json": "{}",
-			},
+		"runs npm ci in the ancestor with package-lock.json, not isolated": {
+			files:       map[string]string{"package-lock.json": "{}"},
+			tsDir:       "charts/app/ts",
 			wantManager: "npm",
 			wantArgs:    npmCI,
+			wantDir:     ".",
 		},
-		"takes the first alternative from devEngines with a lock file in their order": {
-			files: map[string]string{
-				"ts/package.json":      `{"devEngines": {"packageManager": [{"name": "pnpm"}, {"name": "npm"}]}}`,
-				"ts/package-lock.json": "{}",
-				"ts/pnpm-lock.yaml":    "",
-			},
+		"runs a frozen pnpm install in the ancestor with pnpm-lock.yaml, not isolated": {
+			files:       map[string]string{"pnpm-lock.yaml": ""},
+			tsDir:       "charts/app/ts",
 			wantManager: "pnpm",
 			wantArgs:    pnpmFrozen,
+			wantDir:     ".",
 		},
-		"takes the first alternative from devEngines that is in PATH without lock files": {
-			files:          map[string]string{"ts/package.json": `{"devEngines": {"packageManager": [{"name": "bun"}, {"name": "deno"}, {"name": "npm"}]}}`},
-			managersInPath: []string{"npm"},
-			createLockFile: true,
-			wantManager:    "npm",
-			wantArgs:       []string{"install", "--ignore-scripts", "--no-audit", "--no-fund"},
+		"runs a yarn berry install in the ancestor with yarn.lock": {
+			files:       map[string]string{"yarn.lock": "__metadata:\n  version: 8\n"},
+			tsDir:       "charts/app/ts",
+			wantManager: "yarn",
+			wantArgs:    yarnBerryImmutable,
+			wantDir:     ".",
 		},
-		"installs into a workspace that does not include ts": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["packages/*"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts excluded from a workspace before it is included": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["!ts", "*"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts excluded from a pnpm workspace whatever the order of the patterns": {
-			files: map[string]string{
-				"pnpm-workspace.yaml": "packages:\n  - '*'\n  - '!ts'\n  - 'ts'\n",
-				"ts/pnpm-lock.yaml":   "",
-			},
+		"takes the closest lock file": {
+			files:       map[string]string{"package-lock.json": "{}", "charts/app/pnpm-lock.yaml": ""},
+			tsDir:       "charts/app/ts",
 			wantManager: "pnpm",
 			wantArgs:    pnpmFrozen,
+			wantDir:     "charts/app",
 		},
-		"installs into ts not included in a pnpm workspace above it": {
-			files: map[string]string{
-				"pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
-				"pnpm-lock.yaml":      "",
-				"ts/pnpm-lock.yaml":   "",
-			},
-			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
-		},
-		"installs into ts under a dot directory that wildcards do not match": {
-			files: map[string]string{
-				"package.json":               `{"workspaces": ["**"]}`,
-				".helm/ts/package.json":      packageJSON,
-				".helm/ts/package-lock.json": "{}",
-			},
-			tsDir:       ".helm/ts",
+		"takes the lock file in ts over one in an ancestor": {
+			files:       map[string]string{"pnpm-lock.yaml": "", "ts/package-lock.json": "{}"},
 			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
-		"installs into ts under a dot directory that a wildcard does not match": {
-			files: map[string]string{
-				"package.json":               `{"workspaces": ["*/ts"]}`,
-				".helm/ts/package.json":      packageJSON,
-				".helm/ts/package-lock.json": "{}",
-			},
-			tsDir:       ".helm/ts",
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts excluded by a negated character class": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["*", "!t[!x]"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts in braces without alternatives, which are literal": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["{ts}"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts under a test directory, which pnpm never takes into a workspace": {
-			files: map[string]string{
-				"pnpm-workspace.yaml":    "packages:\n  - '**'\n",
-				"pnpm-lock.yaml":         "",
-				"test/ts/package.json":   packageJSON,
-				"test/ts/pnpm-lock.yaml": "",
-			},
-			tsDir:       "test/ts",
-			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
-		},
-		"installs into ts under a dot directory that a pnpm exclusion matches": {
-			files: map[string]string{
-				"pnpm-workspace.yaml":     "packages:\n  - '.helm/*'\n  - '!**/ts'\n",
-				"pnpm-lock.yaml":          "",
-				".helm/ts/package.json":   packageJSON,
-				".helm/ts/pnpm-lock.yaml": "",
-			},
-			tsDir:       ".helm/ts",
-			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
-		},
-		"installs into ts listed in package.json of a pnpm workspace that excludes it": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["ts"]}`,
-				"pnpm-workspace.yaml":  "packages:\n  - 'packages/*'\n",
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"ignores workspaces in package.json of a pnpm project": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["*"]}`,
-				"pnpm-lock.yaml":       "",
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"installs into ts outside the workspace of an ancestor with another package manager": {
-			files: map[string]string{
-				"package.json":         `{"packageManager": "pnpm@10.34.9", "workspaces": ["ts"]}`,
-				"package-lock.json":    "{}",
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"keeps the own workspaces of ts under an ancestor workspace": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["packages/*"]}`,
-				"ts/package.json":      `{"workspaces": ["lib/*"]}`,
-				"ts/package-lock.json": "{}",
-			},
+		"looks for a lock file in the directory with .git": {
+			files:       map[string]string{".git/": "", "package-lock.json": "{}"},
+			tsDir:       "charts/app/ts",
 			wantManager: "npm",
 			wantArgs:    npmCI,
+			wantDir:     ".",
 		},
-		"ignores an ancestor package.json that cannot be decoded": {
+		"takes a .git file of a worktree as the boundary too": {
+			files:       map[string]string{"repo/.git": "gitdir: /elsewhere\n", "repo/yarn.lock": ""},
+			tsDir:       "repo/ts",
+			wantManager: "yarn",
+			wantArgs:    yarnClassicFrozen,
+			wantDir:     "repo",
+		},
+		"ignores package.json of ancestors": {
 			files: map[string]string{
-				"package.json":         `{"workspaces": ["ts"],}`,
+				"package.json":         `{"workspaces": ["ts"], "packageManager": "pnpm@10.0.0",}`,
 				"ts/package-lock.json": "{}",
 			},
 			wantManager: "npm",
-			wantArgs:    npmCI,
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
-		"ignores an ancestor package.json with workspaces that cannot be decoded": {
+		"ignores packageManager and devEngines of ts": {
 			files: map[string]string{
-				"package.json":         `{"workspaces": 42}`,
+				"ts/package.json":      `{"packageManager": "pnpm@10.0.0", "devEngines": {"packageManager": {"name": "yarn"}}}`,
 				"ts/package-lock.json": "{}",
 			},
 			wantManager: "npm",
-			wantArgs:    npmCI,
-		},
-		"ignores an ancestor workspace with a malformed pattern": {
-			files: map[string]string{
-				"package.json":         `{"workspaces": ["t[s"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"ignores an ancestor pnpm-workspace.yaml that cannot be decoded": {
-			files: map[string]string{
-				"pnpm-workspace.yaml":  "packages: [\n",
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCI,
-		},
-		"ignores an ancestor workspace whose package manager cannot be detected": {
-			files: map[string]string{
-				"package.json":         `{"packageManager": "deno@2.9.4", "workspaces": ["ts"]}`,
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCIOutsideWorkspace,
-		},
-		"reads package.json of ts with a byte order mark": {
-			files: map[string]string{
-				"ts/package.json":   "\ufeff" + `{"packageManager": "pnpm@10.34.9"}`,
-				"ts/pnpm-lock.yaml": "",
-			},
-			wantManager: "pnpm",
-			wantArgs:    pnpmFrozen,
-		},
-		"ignores pnpm-workspace.yaml of an npm project": {
-			files: map[string]string{
-				"package.json":         `{"packageManager": "npm@11.20.0"}`,
-				"pnpm-workspace.yaml":  "packages:\n  - '*'\n",
-				"ts/package-lock.json": "{}",
-			},
-			wantManager: "npm",
-			wantArgs:    npmCI,
-		},
-		"creates the npm lock file in init": {
-			createLockFile: true,
-			wantManager:    "npm",
-			wantArgs:       []string{"install", "--ignore-scripts", "--no-audit", "--no-fund"},
-		},
-		"creates the pnpm lock file in init": {
-			files:          map[string]string{"ts/package.json": `{"packageManager": "pnpm@10.20.0"}`},
-			createLockFile: true,
-			wantManager:    "pnpm",
-			wantArgs:       []string{"install", "--ignore-scripts", "--ignore-workspace"},
-		},
-		"creates the yarn berry lock file in init": {
-			files:          map[string]string{"ts/package.json": `{"packageManager": "yarn@4.10.3"}`},
-			createLockFile: true,
-			wantManager:    "yarn",
-			wantArgs:       []string{"install", "--no-immutable", "--mode=skip-build"},
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			binDir := stubPath(t)
-			for _, manager := range lo.Ternary(test.managersInPath != nil, test.managersInPath, allPackageManagers) {
-				writeStub(t, binDir, manager, "")
-			}
-
-			t.Setenv("NELM_TEST_CANARY", "inherited")
-
-			tsDir := lo.Ternary(test.tsDir != "", test.tsDir, "ts")
-
-			projectDir := filepath.Join(t.TempDir(), "project")
-			writeFiles(t, projectDir, map[string]string{tsDir + "/package.json": packageJSON})
-			writeFiles(t, projectDir, test.files)
-
-			tsPath := filepath.Join(projectDir, filepath.FromSlash(tsDir))
-			require.NoError(t, ts.EnsureDependencies(context.Background(), tsPath, test.createLockFile))
-
-			run := readStubRun(t, binDir, test.wantManager)
-			assert.Equal(t, test.wantArgs, run.args)
-			assert.Equal(t, resolvePath(t, tsPath), run.dir)
-			assert.Equal(t, "inherited", run.canary, "the package manager must inherit the environment")
-		})
-	}
-
-	for name, test := range map[string]struct {
-		files          map[string]string
-		tsDir          string
-		createLockFile bool
-		wantErr        []string
-	}{
-		"fails with lock files of several package managers": {
-			files:   map[string]string{"ts/package-lock.json": "{}", "ts/yarn.lock": ""},
-			wantErr: []string{"lock files of several package managers: package-lock.json, yarn.lock", "packageManager"},
-		},
-		"fails with an unsupported package manager": {
-			files:   map[string]string{"ts/package.json": `{"packageManager": "deno@2.9.4"}`},
-			wantErr: []string{`unsupported package manager "deno" in packageManager of package.json`},
-		},
-		"fails with only unsupported package managers in devEngines": {
-			files:   map[string]string{"ts/package.json": `{"devEngines": {"packageManager": [{"name": "deno"}]}}`},
-			wantErr: []string{`unsupported package manager "deno" in devEngines.packageManager of package.json`},
-		},
-		"fails without a lock file": {
-			wantErr: []string{"no lock file of npm in", `run "npm install" there and commit the lock file`},
-		},
-		"tells to keep npm out of the workspace of an ancestor without a lock file": {
-			files:   map[string]string{"package.json": `{"workspaces": ["packages/*"]}`},
-			wantErr: []string{`run "npm install --workspaces=false" there and commit the lock file`},
-		},
-		"tells to keep pnpm out of the workspace of an ancestor without a lock file": {
-			files: map[string]string{
-				"pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
-				"ts/package.json":     `{"packageManager": "pnpm@10.34.9"}`,
-			},
-			wantErr: []string{`run "pnpm install --ignore-workspace" there and commit the lock file`},
-		},
-		"fails without a lock file of the chosen package manager": {
-			files:   map[string]string{"ts/package.json": `{"packageManager": "pnpm@10.20.0"}`, "ts/package-lock.json": "{}"},
-			wantErr: []string{"no lock file of pnpm in"},
-		},
-		"fails when ts is in an npm workspace": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["./ts/"]}`,
-				"package-lock.json": "{}",
-			},
-			wantErr: []string{"are not installed", `run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace matched with braces and classes": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["{apps/*,t[sx]}"]}`,
-				"package-lock.json": "{}",
-			},
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace matched with a negated character class": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["t[!x]"]}`,
-				"package-lock.json": "{}",
-			},
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace matched with a numeric range": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["chart-{1..3}/ts"]}`,
-				"package-lock.json": "{}",
-			},
-			tsDir:   "chart-2/ts",
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace matched with several globstars": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["a/**/b/**/ts"]}`,
-				"package-lock.json": "{}",
-			},
-			tsDir:   "a/x/b/ts",
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts under a dot directory is in a workspace naming it": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": [".helm/*"]}`,
-				"package-lock.json": "{}",
-			},
-			tsDir:   ".helm/ts",
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace above the git repository": {
-			files: map[string]string{
-				"../package.json": `{"workspaces": ["**"]}`,
-				".git/":           "",
-			},
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when ts is in a workspace with a byte order mark in package.json": {
-			files: map[string]string{
-				"package.json":      "\ufeff" + `{"workspaces": ["ts"]}`,
-				"package-lock.json": "{}",
-			},
-			wantErr: []string{`run "npm install" in workspace root`},
-		},
-		"fails when package.json of ts cannot be decoded": {
-			files:   map[string]string{"ts/package.json": `{"type": "module",}`, "ts/package-lock.json": "{}"},
-			wantErr: []string{"decode", "package.json"},
-		},
-		"fails in init when ts is in a workspace that is already installed": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["charts/*/ts"]}`,
-				"package-lock.json": "{}",
-				"node_modules/":     "",
-			},
-			tsDir:          "charts/new/ts",
-			createLockFile: true,
-			wantErr:        []string{"The chart files are created", `run "npm install" in workspace root`},
-		},
-		"fails in init when ts is in a workspace that is not installed": {
-			files: map[string]string{
-				"package.json":      `{"workspaces": ["charts/*/ts"]}`,
-				"package-lock.json": "{}",
-			},
-			tsDir:          "charts/new/ts",
-			createLockFile: true,
-			wantErr:        []string{"The chart files are created", `run "npm install" in workspace root`},
-		},
-		"fails when ts is in a yarn classic workspace": {
-			files: map[string]string{
-				"package.json": `{"workspaces": {"packages": ["*"]}}`,
-				"yarn.lock":    "",
-			},
-			wantErr: []string{`run "yarn install" in workspace root`},
-		},
-		"fails when ts is in a pnpm workspace": {
-			files: map[string]string{
-				"pnpm-workspace.yaml": "packages:\n  - '**/ts'\n",
-				"pnpm-lock.yaml":      "",
-			},
-			wantErr: []string{`run "pnpm install" in workspace root`},
-		},
-		"fails when ts is in a pnpm workspace that is not installed yet": {
-			files:   map[string]string{"pnpm-workspace.yaml": "packages:\n  - '*'\n"},
-			wantErr: []string{`run "pnpm install" in workspace root`},
+			wantArgs:    append(npmCI, "--workspaces=false"),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -578,13 +140,73 @@ func TestEnsureDependencies(t *testing.T) {
 				writeStub(t, binDir, manager, "")
 			}
 
-			tsDir := lo.Ternary(test.tsDir != "", test.tsDir, "ts")
+			tsDir := test.tsDir
+			if tsDir == "" {
+				tsDir = "ts"
+			}
 
 			projectDir := filepath.Join(t.TempDir(), "project")
 			writeFiles(t, projectDir, map[string]string{tsDir + "/package.json": packageJSON})
 			writeFiles(t, projectDir, test.files)
 
-			err := ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, filepath.FromSlash(tsDir)), test.createLockFile)
+			require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, filepath.FromSlash(tsDir)), false))
+
+			wantDir := test.wantDir
+			if wantDir == "" {
+				wantDir = tsDir
+			}
+
+			run := readStubRun(t, binDir, test.wantManager)
+			assert.Equal(t, test.wantArgs, run.args)
+			assert.Equal(t, resolvePath(t, filepath.Join(projectDir, filepath.FromSlash(wantDir))), run.dir)
+
+			for _, manager := range allPackageManagers {
+				if manager != test.wantManager {
+					requireStubNotRun(t, binDir, manager)
+				}
+			}
+		})
+	}
+
+	for name, test := range map[string]struct {
+		files   map[string]string
+		tsDir   string
+		wantErr []string
+	}{
+		"fails with lock files of several package managers in one directory": {
+			files:   map[string]string{"ts/package-lock.json": "{}", "ts/yarn.lock": ""},
+			wantErr: []string{"lock files of several package managers", "package-lock.json", "yarn.lock"},
+		},
+		"fails with lock files of several package managers in an ancestor": {
+			files:   map[string]string{"pnpm-lock.yaml": "", "bun.lock": ""},
+			tsDir:   "charts/app/ts",
+			wantErr: []string{"lock files of several package managers", "bun.lock", "pnpm-lock.yaml"},
+		},
+		"fails without a lock file": {
+			wantErr: []string{"no lock file", `run "npm install" in`, "commit the lock file"},
+		},
+		"fails without a lock file below .git with one above it": {
+			files:   map[string]string{"package-lock.json": "{}", "repo/.git/": ""},
+			tsDir:   "repo/charts/app/ts",
+			wantErr: []string{"no lock file"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			binDir := stubPath(t)
+			for _, manager := range allPackageManagers {
+				writeStub(t, binDir, manager, "")
+			}
+
+			tsDir := test.tsDir
+			if tsDir == "" {
+				tsDir = "ts"
+			}
+
+			projectDir := filepath.Join(t.TempDir(), "project")
+			writeFiles(t, projectDir, map[string]string{tsDir + "/package.json": packageJSON})
+			writeFiles(t, projectDir, test.files)
+
+			err := ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, filepath.FromSlash(tsDir)), false)
 			require.Error(t, err)
 
 			for _, want := range test.wantErr {
@@ -597,31 +219,69 @@ func TestEnsureDependencies(t *testing.T) {
 		})
 	}
 
-	for name, files := range map[string]map[string]string{
-		"there is no package.json": {"ts/package-lock.json": "{}", "ts/src/index.js": ""},
-		"node_modules exists":      {"ts/package.json": packageJSON, "ts/package-lock.json": "{}", "ts/node_modules/": ""},
-		".pnp.cjs exists":          {"ts/package.json": packageJSON, "ts/yarn.lock": "", "ts/.pnp.cjs": ""},
-		"node_modules exists in the workspace root": {
-			"package.json":      `{"workspaces": ["ts"]}`,
-			"package-lock.json": "{}",
-			"node_modules/":     "",
-			"ts/package.json":   packageJSON,
+	for name, test := range map[string]struct {
+		files map[string]string
+		tsDir string
+	}{
+		"there is no package.json": {
+			files: map[string]string{"ts/package-lock.json": "{}", "ts/src/index.js": ""},
+		},
+		"node_modules exists in ts without a lock file anywhere": {
+			files: map[string]string{"ts/package.json": packageJSON, "ts/node_modules/": ""},
+		},
+		"node_modules exists in ts with the lock file": {
+			files: map[string]string{"ts/package.json": packageJSON, "ts/package-lock.json": "{}", "ts/node_modules/": ""},
+		},
+		".pnp.cjs exists in ts with the lock file": {
+			files: map[string]string{"ts/package.json": packageJSON, "ts/yarn.lock": "", "ts/.pnp.cjs": ""},
+		},
+		"node_modules exists in the ancestor with the lock file": {
+			files: map[string]string{"package-lock.json": "{}", "node_modules/": "", "charts/app/ts/package.json": packageJSON},
+			tsDir: "charts/app/ts",
+		},
+		".pnp.cjs exists in the ancestor with the lock file": {
+			files: map[string]string{"yarn.lock": "", ".pnp.cjs": "", "charts/app/ts/package.json": packageJSON},
+			tsDir: "charts/app/ts",
 		},
 	} {
 		t.Run("installs nothing when "+name, func(t *testing.T) {
 			binDir := stubPath(t)
-			writeStub(t, binDir, "npm", "")
-			writeStub(t, binDir, "yarn", "")
+			for _, manager := range allPackageManagers {
+				writeStub(t, binDir, manager, "")
+			}
+
+			tsDir := test.tsDir
+			if tsDir == "" {
+				tsDir = "ts"
+			}
 
 			projectDir := filepath.Join(t.TempDir(), "project")
-			writeFiles(t, projectDir, files)
+			writeFiles(t, projectDir, test.files)
 
-			require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "ts"), false))
+			require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, filepath.FromSlash(tsDir)), false))
 
-			requireStubNotRun(t, binDir, "npm")
-			requireStubNotRun(t, binDir, "yarn")
+			for _, manager := range allPackageManagers {
+				requireStubNotRun(t, binDir, manager)
+			}
 		})
 	}
+
+	t.Run("installs with node_modules in ts when the lock file is in the ancestor", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "npm", "")
+
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{
+			"package-lock.json":           "{}",
+			"charts/app/ts/package.json":  packageJSON,
+			"charts/app/ts/node_modules/": "",
+		})
+
+		require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "charts", "app", "ts"), false))
+
+		run := readStubRun(t, binDir, "npm")
+		assert.Equal(t, resolvePath(t, projectDir), run.dir)
+	})
 
 	t.Run("fails for a chart set up for Deno", func(t *testing.T) {
 		binDir := stubPath(t)
@@ -660,7 +320,7 @@ func TestEnsureDependencies(t *testing.T) {
 
 		err := ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "ts"), false)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), `run "npm ci --ignore-scripts --no-audit --no-fund"`)
+		assert.Contains(t, err.Error(), `run "npm ci --ignore-scripts --no-audit --no-fund --workspaces=false"`)
 		assert.Contains(t, err.Error(), "exit status 1")
 	})
 }
@@ -671,7 +331,6 @@ func TestEnsureDependenciesThroughSymlink(t *testing.T) {
 
 	repoDir := filepath.Join(t.TempDir(), "repo")
 	writeFiles(t, repoDir, map[string]string{
-		"package.json":               `{"workspaces": ["charts/*/ts"]}`,
 		"package-lock.json":          "{}",
 		"node_modules/":              "",
 		"charts/app/ts/package.json": "{}",
@@ -681,23 +340,39 @@ func TestEnsureDependenciesThroughSymlink(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(repoDir, "charts", "app"), linkDir))
 
 	require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(linkDir, "ts"), false),
-		"the workspace must be found among the ancestors of the symlink target")
+		"the lock file must be found among the ancestors of the symlink target")
 	requireStubNotRun(t, binDir, "npm")
 }
 
 func TestInstallDependencies(t *testing.T) {
-	t.Run("installs and creates the lock file", func(t *testing.T) {
+	t.Run("creates the lock file with npm in ts without one anywhere", func(t *testing.T) {
+		binDir := stubPath(t)
+		for _, manager := range allPackageManagers {
+			writeStub(t, binDir, manager, "")
+		}
+
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{"pnpm-workspace.yaml": "packages:\n  - '*'\n", "chart/ts/package.json": "{}"})
+
+		require.NoError(t, ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "chart")))
+
+		run := readStubRun(t, binDir, "npm")
+		assert.Equal(t, []string{"install", "--ignore-scripts", "--no-audit", "--no-fund", "--workspaces=false"}, run.args)
+		assert.Equal(t, resolvePath(t, filepath.Join(projectDir, "chart", "ts")), run.dir)
+	})
+
+	t.Run("installs in the ancestor with the lock file", func(t *testing.T) {
 		binDir := stubPath(t)
 		writeStub(t, binDir, "npm", "")
 
-		chartDir := filepath.Join(t.TempDir(), "chart")
-		writeFiles(t, chartDir, map[string]string{"ts/package.json": "{}"})
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{"package-lock.json": "{}", "charts/app/ts/package.json": "{}"})
 
-		require.NoError(t, ts.InstallDependencies(context.Background(), chartDir))
+		require.NoError(t, ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "charts", "app")))
 
 		run := readStubRun(t, binDir, "npm")
-		assert.Equal(t, []string{"install", "--ignore-scripts", "--no-audit", "--no-fund"}, run.args)
-		assert.Equal(t, resolvePath(t, filepath.Join(chartDir, "ts")), run.dir)
+		assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}, run.args)
+		assert.Equal(t, resolvePath(t, projectDir), run.dir)
 	})
 
 	t.Run("tells how to finish when installing fails", func(t *testing.T) {
@@ -710,33 +385,18 @@ func TestInstallDependencies(t *testing.T) {
 		err := ts.InstallDependencies(context.Background(), chartDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "The chart files are created")
-		assert.Contains(t, err.Error(), `run "npm install" in `+resolvePath(t, filepath.Join(chartDir, "ts")))
-	})
-
-	t.Run("tells how to finish outside the workspace of an ancestor when installing fails", func(t *testing.T) {
-		binDir := stubPath(t)
-		writeStub(t, binDir, "npm", "exit 1\n")
-
-		projectDir := filepath.Join(t.TempDir(), "project")
-		writeFiles(t, projectDir, map[string]string{
-			"package.json":          `{"workspaces": ["packages/*"]}`,
-			"chart/ts/package.json": "{}",
-		})
-
-		err := ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "chart"))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `run "npm install --workspaces=false" in `+resolvePath(t, filepath.Join(projectDir, "chart", "ts")))
+		assert.Contains(t, err.Error(), `run "npm install --ignore-scripts --no-audit --no-fund --workspaces=false" in `+resolvePath(t, filepath.Join(chartDir, "ts")))
 	})
 
 	t.Run("tells how to finish without the package manager in PATH", func(t *testing.T) {
 		stubPath(t)
 
 		chartDir := filepath.Join(t.TempDir(), "chart")
-		writeFiles(t, chartDir, map[string]string{"ts/package.json": `{"packageManager": "pnpm@10.20.0"}`})
+		writeFiles(t, chartDir, map[string]string{"ts/package.json": "{}"})
 
 		err := ts.InstallDependencies(context.Background(), chartDir)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "package manager pnpm is not found in PATH")
-		assert.Contains(t, err.Error(), `run "pnpm install --ignore-workspace" in `)
+		assert.Contains(t, err.Error(), "package manager npm is not found in PATH")
+		assert.Contains(t, err.Error(), "The chart files are created")
 	})
 }
