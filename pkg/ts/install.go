@@ -148,6 +148,7 @@ func checkYarnVersion(ctx context.Context, installDir, yarnPath string) error {
 	// Run in installDir, where .yarnrc.yml may set the yarn to use.
 	cmd := exec.CommandContext(ctx, yarnPath, "--version")
 	cmd.Dir = installDir
+	cmd.Env = packageManagerEnv()
 
 	// Only stdout has the version: corepack tells on stderr that it downloads yarn.
 	output, err := cmd.Output()
@@ -203,6 +204,30 @@ func installHint(tsDir string) (string, error) {
 	default:
 		return fmt.Sprintf("the closest lock file is in %s, so make sure %s is in the workspace there and run %q in %s", installDir, tsDir, managerName+" install", installDir), nil
 	}
+}
+
+func runPackageManager(ctx context.Context, dir, managerPath, managerName string, args []string) error {
+	command := managerName + " " + strings.Join(args, " ")
+
+	log.Default.Info(ctx, "Run %q in %s", command, dir)
+
+	var output bytes.Buffer
+
+	cmd := exec.CommandContext(ctx, managerPath, args...)
+	cmd.Dir = dir
+	cmd.Env = packageManagerEnv()
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	if err := cmd.Run(); err != nil {
+		log.Default.Error(ctx, "%s output: %s", command, output.String())
+
+		return fmt.Errorf("run %q in %s: %w", command, dir, err)
+	}
+
+	log.Default.Debug(ctx, "%s output: %s", command, output.String())
+
+	return nil
 }
 
 func checkNotDenoChart(ctx context.Context, tsDir string) error {
@@ -309,6 +334,12 @@ func isolationArgs(managerName string) []string {
 	}
 }
 
+// packageManagerEnv is the environment of nelm, except that corepack, which may run the package
+// manager, must not add packageManager to package.json of the user. The last value of a variable wins.
+func packageManagerEnv() []string {
+	return append(os.Environ(), "COREPACK_ENABLE_AUTO_PIN=0")
+}
+
 func resolvePath(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -321,27 +352,4 @@ func resolvePath(path string) (string, error) {
 	}
 
 	return resolvedPath, nil
-}
-
-func runPackageManager(ctx context.Context, dir, managerPath, managerName string, args []string) error {
-	command := managerName + " " + strings.Join(args, " ")
-
-	log.Default.Info(ctx, "Run %q in %s", command, dir)
-
-	var output bytes.Buffer
-
-	cmd := exec.CommandContext(ctx, managerPath, args...)
-	cmd.Dir = dir
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-
-	if err := cmd.Run(); err != nil {
-		log.Default.Error(ctx, "%s output: %s", command, output.String())
-
-		return fmt.Errorf("run %q in %s: %w", command, dir, err)
-	}
-
-	log.Default.Debug(ctx, "%s output: %s", command, output.String())
-
-	return nil
 }

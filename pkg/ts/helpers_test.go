@@ -34,12 +34,14 @@ for arg; do
   esac
 done
 `
-	// stubScript records its arguments, working directory and $NELM_TEST_CANARY next to itself, and then
-	// runs the body. It uses shell builtins only, as PATH in the tests holds nothing but the stubs.
+	// stubScript records its arguments, working directory, $NELM_TEST_CANARY and
+	// $COREPACK_ENABLE_AUTO_PIN next to itself, and then runs the body. It uses shell builtins only, as
+	// PATH in the tests holds nothing but the stubs.
 	stubScript = `#!/bin/sh
 printf '%s\n' "$@" > "$0.args"
 pwd -P > "$0.pwd"
 printf '%s' "$NELM_TEST_CANARY" > "$0.canary"
+printf '%s' "${COREPACK_ENABLE_AUTO_PIN-unset}" > "$0.autopin"
 `
 )
 
@@ -90,9 +92,10 @@ type fakeNodeRun struct {
 }
 
 type stubRun struct {
-	args   []string
-	canary string
-	dir    string
+	args    []string
+	autoPin string
+	canary  string
+	dir     string
 }
 
 // runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
@@ -214,10 +217,14 @@ func readStubRun(t *testing.T, binDir, name string) stubRun {
 	canary, err := os.ReadFile(path + ".canary")
 	require.NoError(t, err)
 
+	autoPin, err := os.ReadFile(path + ".autopin")
+	require.NoError(t, err)
+
 	return stubRun{
-		args:   strings.Split(strings.TrimSuffix(string(args), "\n"), "\n"),
-		canary: string(canary),
-		dir:    strings.TrimSpace(string(dir)),
+		args:    strings.Split(strings.TrimSuffix(string(args), "\n"), "\n"),
+		autoPin: string(autoPin),
+		canary:  string(canary),
+		dir:     strings.TrimSpace(string(dir)),
 	}
 }
 
@@ -307,10 +314,11 @@ func writeStub(t *testing.T, binDir, name, body string) {
 }
 
 // writeYarnStub writes a yarn stub, which prints stderr to stderr and version to stdout for
-// "yarn --version" without recording it, as corepack does when it downloads yarn.
+// "yarn --version", as corepack does when it downloads yarn, and records only $COREPACK_ENABLE_AUTO_PIN
+// of it, in yarn.version-autopin.
 func writeYarnStub(t *testing.T, binDir, version, stderr string) {
 	t.Helper()
 
-	script := strings.Replace(stubScript, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s' '"+stderr+"' >&2; printf '%s\\n' '"+version+"'; exit 0; fi\n", 1)
+	script := strings.Replace(stubScript, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s' \"${COREPACK_ENABLE_AUTO_PIN-unset}\" > \"$0.version-autopin\"; printf '%s' '"+stderr+"' >&2; printf '%s\\n' '"+version+"'; exit 0; fi\n", 1)
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "yarn"), []byte(script), 0o755))
 }

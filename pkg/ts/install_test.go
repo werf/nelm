@@ -158,6 +158,10 @@ func TestEnsureDependencies(t *testing.T) {
 
 			writeYarnStub(t, binDir, yarnVersion, test.yarnStderr)
 
+			// Corepack would otherwise add packageManager to package.json of the user.
+			t.Setenv("COREPACK_ENABLE_AUTO_PIN", "1")
+			t.Setenv("NELM_TEST_CANARY", "inherited")
+
 			tsDir := test.tsDir
 			if tsDir == "" {
 				tsDir = "ts"
@@ -176,6 +180,15 @@ func TestEnsureDependencies(t *testing.T) {
 
 			run := readStubRun(t, binDir, test.wantManager)
 			assert.Equal(t, test.wantArgs, run.args)
+			assert.Equal(t, "0", run.autoPin)
+			assert.Equal(t, "inherited", run.canary, "the package manager must run with the environment of nelm")
+
+			if test.wantManager == "yarn" {
+				versionAutoPin, err := os.ReadFile(filepath.Join(binDir, "yarn.version-autopin"))
+				require.NoError(t, err, "yarn --version was not run")
+				assert.Equal(t, "0", string(versionAutoPin))
+			}
+
 			assert.Equal(t, resolvePath(t, filepath.Join(projectDir, filepath.FromSlash(wantDir))), run.dir)
 
 			for _, manager := range allPackageManagers {
