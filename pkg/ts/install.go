@@ -69,6 +69,14 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return fmt.Errorf("find lock file of %s: %w", tsDir, err)
 	}
 
+	// The workspace of the lock file and its lock file are up to the user, so chart ts init only tells
+	// how to install.
+	if createLockFile && installDir != "" && installDir != tsDir {
+		log.Default.Warn(ctx, "Dependencies of %s are not installed, as the closest lock file is in %s: to make the chart a member of the workspace there, add %s to it (workspaces in package.json or pnpm-workspace.yaml) and run %q in %s; to keep the chart standalone, run %q", tsDir, installDir, tsDir, managerName+" install", installDir, "cd "+tsDir+" && npm install")
+
+		return nil
+	}
+
 	// Without a lock file the dependencies go to tsDir, as chart ts init installs them.
 	lockFileFound := installDir != ""
 	if !lockFileFound {

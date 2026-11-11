@@ -361,18 +361,63 @@ func TestInstallDependencies(t *testing.T) {
 		assert.Equal(t, resolvePath(t, filepath.Join(projectDir, "chart", "ts")), run.dir)
 	})
 
-	t.Run("installs in the ancestor with the lock file", func(t *testing.T) {
+	for name, test := range map[string]struct {
+		files       map[string]string
+		wantCommand string
+	}{
+		"npm workspace that is not installed": {
+			files:       map[string]string{"package.json": `{"workspaces": ["charts/*/ts"]}`, "package-lock.json": "{}"},
+			wantCommand: `"npm install"`,
+		},
+		"npm workspace that is installed without the dependencies of the chart": {
+			files:       map[string]string{"package.json": `{"workspaces": ["charts/*/ts"]}`, "package-lock.json": "{}", "node_modules/": ""},
+			wantCommand: `"npm install"`,
+		},
+		"pnpm workspace": {
+			files:       map[string]string{"pnpm-workspace.yaml": "packages:\n  - 'charts/*/ts'\n", "pnpm-lock.yaml": ""},
+			wantCommand: `"pnpm install"`,
+		},
+	} {
+		t.Run("tells how to install without installing under the lock file of an ancestor in an "+name, func(t *testing.T) {
+			logger := recordLogs(t)
+
+			binDir := stubPath(t)
+			for _, manager := range allPackageManagers {
+				writeStub(t, binDir, manager, "")
+			}
+
+			projectDir := filepath.Join(t.TempDir(), "project")
+			writeFiles(t, projectDir, test.files)
+			writeFiles(t, projectDir, map[string]string{"charts/app/ts/package.json": "{}"})
+
+			require.NoError(t, ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "charts", "app")))
+
+			for _, manager := range allPackageManagers {
+				requireStubNotRun(t, binDir, manager)
+			}
+
+			hints := logMessages(logger.entries(), "warn")
+			require.Len(t, hints, 1)
+			assert.Contains(t, hints[0], "run "+test.wantCommand+" in "+resolvePath(t, projectDir))
+			assert.Contains(t, hints[0], "workspaces in package.json or pnpm-workspace.yaml")
+			assert.Contains(t, hints[0], `run "cd `+resolvePath(t, filepath.Join(projectDir, "charts", "app", "ts"))+` && npm install"`)
+		})
+	}
+
+	t.Run("installs as the build does with the lock file in ts", func(t *testing.T) {
 		binDir := stubPath(t)
 		writeStub(t, binDir, "npm", "")
+		writeStub(t, binDir, "pnpm", "")
 
 		projectDir := filepath.Join(t.TempDir(), "project")
-		writeFiles(t, projectDir, map[string]string{"package-lock.json": "{}", "charts/app/ts/package.json": "{}"})
+		writeFiles(t, projectDir, map[string]string{"pnpm-lock.yaml": "", "charts/app/ts/package.json": "{}", "charts/app/ts/package-lock.json": "{}"})
 
 		require.NoError(t, ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "charts", "app")))
 
 		run := readStubRun(t, binDir, "npm")
-		assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}, run.args)
-		assert.Equal(t, resolvePath(t, projectDir), run.dir)
+		assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund", "--workspaces=false"}, run.args)
+		assert.Equal(t, resolvePath(t, filepath.Join(projectDir, "charts", "app", "ts")), run.dir)
+		requireStubNotRun(t, binDir, "pnpm")
 	})
 
 	t.Run("tells how to finish when installing fails", func(t *testing.T) {
