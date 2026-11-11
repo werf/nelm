@@ -3,7 +3,6 @@ package ts_test
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,7 +21,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/ts"
 )
 
-func TestRenderChartRemovesRenderFiles(t *testing.T) {
+func TestRenderChartRemovesRenderDir(t *testing.T) {
 	skipWithoutShell(t)
 
 	chartDir := copyTestChart(t)
@@ -46,15 +45,9 @@ func TestRenderChartRemovesRenderFiles(t *testing.T) {
 			_, err := ts.RenderChartRecursive(context.Background(), chart, values, chart.Name(), chartDir, tempDir, nodePath)
 			assert.Equal(t, test.wantErr, err != nil, "error: %v", err)
 
-			var leftovers []string
-			require.NoError(t, filepath.WalkDir(tempDir, func(path string, entry fs.DirEntry, err error) error {
-				if err == nil && !entry.IsDir() {
-					leftovers = append(leftovers, path)
-				}
-
-				return err
-			}))
-			assert.Empty(t, leftovers, "the input with the values and the output must be removed")
+			entries, err := os.ReadDir(filepath.Join(tempDir, "typescript-render"))
+			require.NoError(t, err)
+			assert.Empty(t, entries, "the render dir with the input, which has the values, must be removed")
 		})
 	}
 }

@@ -96,27 +96,20 @@ func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values 
 }
 
 func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, nodeBin string) (string, error) {
-	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
-	if err := os.MkdirAll(renderDir, 0o755); err != nil {
+	renderParentDir := filepath.Join(tempDirPath, "typescript-render")
+	if err := os.MkdirAll(renderParentDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
 	}
 
-	renderFiles := []string{common.ChartTSInputFile, common.ChartTSOutputFile}
-
-	// The temp dir may be reused: whatever is left there, symlinks included, must not be written
-	// through or passed to Node.js in place of the files created here.
-	for _, file := range renderFiles {
-		if err := os.Remove(filepath.Join(renderDir, file)); err != nil && !os.IsNotExist(err) {
-			return "", fmt.Errorf("remove leftover %s: %w", file, err)
-		}
+	renderDir, err := os.MkdirTemp(renderParentDir, "")
+	if err != nil {
+		return "", fmt.Errorf("create render dir: %w", err)
 	}
 
 	// The input holds the values, decrypted secrets included.
 	defer func() {
-		for _, file := range renderFiles {
-			if err := os.Remove(filepath.Join(renderDir, file)); err != nil && !os.IsNotExist(err) {
-				log.Default.Warn(ctx, "Unable to remove %s: %s", filepath.Join(renderDir, file), err)
-			}
+		if err := os.RemoveAll(renderDir); err != nil {
+			log.Default.Warn(ctx, "Unable to remove %s: %s", renderDir, err)
 		}
 	}()
 
