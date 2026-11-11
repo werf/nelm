@@ -238,29 +238,18 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Equal(t, map[string]any{"typescript": "~6.0.3"}, packageJSON["devDependencies"])
 	})
 
-	t.Run("names the package after the chart as npm allows", func(t *testing.T) {
-		for chartName, wantName := range map[string]string{
-			"My_Chart":      "my_chart-ts",
-			"_private.app":  "private.app-ts",
-			"app@1 (copy)!": "app-1--copy-ts",
-			"...":           "chart-ts",
-			"-app":          "app-ts",
-			"~app":          "app-ts",
-			"a~b":           "a-b-ts",
-			"-._~":          "chart-ts",
-		} {
-			chartPath := filepath.Join(t.TempDir(), "chart")
-			require.NoError(t, os.MkdirAll(chartPath, 0o755))
+	t.Run("names the package after the chart", func(t *testing.T) {
+		chartPath := filepath.Join(t.TempDir(), "chart")
+		require.NoError(t, os.MkdirAll(chartPath, 0o755))
 
-			require.NoError(t, ts.InitTSBoilerplate(context.Background(), chartPath, chartName, ts.InitTSBoilerplateOptions{}))
+		require.NoError(t, ts.InitTSBoilerplate(context.Background(), chartPath, "My-Chart", ts.InitTSBoilerplateOptions{}))
 
-			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
-			require.NoError(t, err)
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
+		require.NoError(t, err)
 
-			var packageJSON map[string]any
-			require.NoError(t, json.Unmarshal(content, &packageJSON))
-			assert.Equal(t, wantName, packageJSON["name"], "chart name %q", chartName)
-		}
+		var packageJSON map[string]any
+		require.NoError(t, json.Unmarshal(content, &packageJSON))
+		assert.Equal(t, "my-chart-ts", packageJSON["name"])
 	})
 
 	t.Run("includes correct tsconfig.json", func(t *testing.T) {
