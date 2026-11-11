@@ -476,14 +476,6 @@ func getFilesFromLocalFilesystem(dir string) ([]*nelmcommon.BufferedFile, error)
 		if err != nil {
 			return err
 		}
-		if nelmcommon.IsChartTSDependencyFileInTree(n) {
-			if fi.IsDir() {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
 		if fi.IsDir() {
 			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir

@@ -30,8 +30,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	nelmcommon "github.com/werf/nelm/v2/pkg/common"
 )
 
 // MaxDecompressedChartSize is the maximum size of a chart archive that will be
@@ -124,11 +122,6 @@ func LoadArchiveFiles(in io.Reader) ([]*BufferedFile, error) {
 
 		if parts[0] == "Chart.yaml" {
 			return nil, errors.New("chart yaml not in base directory")
-		}
-
-		// Skipped before the size checks, as native binaries of dependencies are often too large.
-		if nelmcommon.IsChartTSDependencyFileInTree(n) {
-			continue
 		}
 
 		if hd.Size > remainingSize {

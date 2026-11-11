@@ -5,13 +5,26 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/v2/pkg/ts"
 )
+
+var chartTSIgnoreEntries = []string{
+	"ts/node_modules/",
+	"ts/.dev/",
+	"ts/.pnp.*",
+	"ts/.yarn/cache/",
+	"ts/.yarn/unplugged/",
+	"ts/.yarn/__virtual__/",
+	"ts/.yarn/install-state.gz",
+	"ts/.yarn/build-state.yml",
+}
 
 func TestEnsureGitignore(t *testing.T) {
 	t.Run("creates .gitignore if missing", func(t *testing.T) {
@@ -21,10 +34,7 @@ func TestEnsureGitignore(t *testing.T) {
 		err := ts.EnsureGitignore(chartPath)
 		require.NoError(t, err)
 
-		content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
-		require.NoError(t, err)
-		assert.Contains(t, string(content), "ts/node_modules/")
-		assert.Contains(t, string(content), "ts/.dev/")
+		assert.Equal(t, chartTSIgnoreEntries, ignoreFileEntries(t, filepath.Join(chartPath, ".gitignore")))
 	})
 
 	t.Run("appends missing entries to existing .gitignore", func(t *testing.T) {
@@ -39,17 +49,15 @@ func TestEnsureGitignore(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), "# My project")
-		assert.Contains(t, string(content), "*.log")
-		assert.Contains(t, string(content), "ts/node_modules/")
-		assert.Contains(t, string(content), "ts/.dev/")
+		assert.True(t, strings.HasPrefix(string(content), originalContent))
+		assert.Equal(t, append([]string{"*.log"}, chartTSIgnoreEntries...), ignoreFileEntries(t, filepath.Join(chartPath, ".gitignore")))
 	})
 
 	t.Run("does not duplicate entries", func(t *testing.T) {
 		chartPath := filepath.Join(t.TempDir(), "test-chart")
 		require.NoError(t, os.MkdirAll(chartPath, 0o755))
 
-		existingContent := "ts/node_modules/\nts/.dev/\nts/dist/\n"
+		existingContent := strings.Join(chartTSIgnoreEntries, "\n") + "\nts/dist/\n"
 		require.NoError(t, os.WriteFile(filepath.Join(chartPath, ".gitignore"), []byte(existingContent), 0o644))
 
 		err := ts.EnsureGitignore(chartPath)
@@ -70,10 +78,7 @@ func TestEnsureGitignore(t *testing.T) {
 		err := ts.EnsureGitignore(chartPath)
 		require.NoError(t, err)
 
-		content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
-		require.NoError(t, err)
-		assert.Contains(t, string(content), "ts/node_modules/")
-		assert.Contains(t, string(content), "ts/.dev/")
+		assert.Equal(t, chartTSIgnoreEntries, ignoreFileEntries(t, filepath.Join(chartPath, ".gitignore")))
 	})
 }
 
@@ -116,10 +121,18 @@ func TestInitChartStructure(t *testing.T) {
 		err := ts.InitChartStructure(context.Background(), chartPath, "ts-only-chart")
 		require.NoError(t, err)
 
-		content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
+		assert.Equal(t, chartTSIgnoreEntries, ignoreFileEntries(t, filepath.Join(chartPath, ".helmignore")))
+	})
+
+	t.Run("appends missing TS entries to an existing .helmignore", func(t *testing.T) {
+		chartPath := filepath.Join(t.TempDir(), "ts-only-chart")
+		require.NoError(t, os.MkdirAll(chartPath, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(chartPath, ".helmignore"), []byte(".git/\nts/node_modules/\n"), 0o644))
+
+		err := ts.InitChartStructure(context.Background(), chartPath, "ts-only-chart")
 		require.NoError(t, err)
-		assert.Contains(t, string(content), "ts/node_modules/")
-		assert.Contains(t, string(content), "ts/.dev/")
+
+		assert.Equal(t, append([]string{".git/"}, chartTSIgnoreEntries...), ignoreFileEntries(t, filepath.Join(chartPath, ".helmignore")))
 	})
 
 	t.Run("skips existing Chart.yaml", func(t *testing.T) {
@@ -412,5 +425,17 @@ func TestInitTSBoilerplate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "remove it to initialize the chart again")
 		assert.Contains(t, err.Error(), "npm install")
+	})
+}
+
+// ignoreFileEntries returns the lines of an ignore file that are neither empty nor comments.
+func ignoreFileEntries(t *testing.T, path string) []string {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return lo.Filter(strings.Split(string(content), "\n"), func(line string, _ int) bool {
+		return line != "" && !strings.HasPrefix(line, "#")
 	})
 }

@@ -16,6 +16,12 @@ import (
 var chartTSIgnoreEntries = []string{
 	"ts/node_modules/",
 	"ts/.dev/",
+	"ts/.pnp.*",
+	"ts/.yarn/cache/",
+	"ts/.yarn/unplugged/",
+	"ts/.yarn/__virtual__/",
+	"ts/.yarn/install-state.gz",
+	"ts/.yarn/build-state.yml",
 }
 
 type InitTSBoilerplateOptions struct {

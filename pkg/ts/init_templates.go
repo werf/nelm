@@ -49,6 +49,12 @@ export function newDeployment($: {{ .RenderContextType }}): object {
 # TypeScript chart files
 ts/node_modules/
 ts/.dev/
+ts/.pnp.*
+ts/.yarn/cache/
+ts/.yarn/unplugged/
+ts/.yarn/__virtual__/
+ts/.yarn/install-state.gz
+ts/.yarn/build-state.yml
 `
 	helpersTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 

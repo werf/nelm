@@ -117,14 +117,6 @@ func getFilesFromLocalFilesystem(dir string) ([]*archive.BufferedFile, error) {
 		if err != nil {
 			return err
 		}
-		if nelmcommon.IsChartTSDependencyFileInTree(n) {
-			if fi.IsDir() {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
 		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
