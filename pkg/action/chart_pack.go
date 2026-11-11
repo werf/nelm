@@ -84,8 +84,6 @@ type ChartPackOptions struct {
 	// ignore the secret-values.yaml file of the top-level chart. When false, the stored switch is
 	// kept.
 	DefaultSecretValuesDisable bool
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DependencyUpdate, when true, updates Chart.lock and charts/ of the chart directory from
 	// Chart.yaml before packing.
 	DependencyUpdate bool
@@ -242,7 +240,7 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		if err := ts.BundleChartsRecursive(ctx, chartAccessor, chartPath, !opts.TSNoRebuild, opts.DenoBinaryPath); err != nil {
+		if err := ts.BundleChartsRecursive(ctx, chartAccessor, chartPath, !opts.TSNoRebuild); err != nil {
 			return nil, fmt.Errorf("process TypeScript files in chart: %w", err)
 		}
 	}

@@ -109,9 +109,9 @@ const (
 	ChartTSEntryPointJS = "src/index.js"
 	// ChartTSEntryPointTS is the TypeScript entry point path.
 	ChartTSEntryPointTS = "src/index.ts"
-	// ChartTSInputFile is the name of the input file with context for the Deno app.
+	// ChartTSInputFile is the name of the input file with context for the TypeScript chart.
 	ChartTSInputFile = "input.yaml"
-	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
+	// ChartTSOutputFile is the name of the output file with rendered manifests from the TypeScript chart.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
 	ChartTSSourceDir                    = "ts/"
@@ -280,8 +280,7 @@ type ResourceState string
 type StoreAs string
 
 type HelmOptions struct {
-	ChartLoadOpts  ChartLoadOptions
-	TypeScriptOpts TypeScriptOptions
+	ChartLoadOpts ChartLoadOptions
 }
 
 type ChartLoadOptions struct {
@@ -304,11 +303,6 @@ type ChartLoadOptions struct {
 	// WerfDataValuesSwitches makes the loader apply the default values switches of the .werf-data of
 	// the chart and of every dependency on top of these, to the chart and its dependencies.
 	WerfDataValuesSwitches bool
-}
-
-type TypeScriptOptions struct {
-	DenoBinaryPath         string
-	EmbeddedDenoCompressed []byte
 }
 
 type helmOptionsContextKey struct{}

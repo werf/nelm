@@ -30,7 +30,6 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 const packageDesc = `
@@ -70,7 +69,6 @@ func newPackageCmd(out io.Writer) *cobra.Command {
 				}
 			}
 
-			client.TypeScriptOps = ts.GetTSOptionsFromContext(cmd.Context())
 			client.RepositoryConfig = settings.RepositoryConfig
 			client.RepositoryCache = settings.RepositoryCache
 			p := getter.All(settings)

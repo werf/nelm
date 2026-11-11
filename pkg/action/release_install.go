@@ -75,13 +75,12 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
 	DropInvalidAnnotationsAndLabels bool
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
@@ -132,6 +131,8 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
+	NodeBinaryPath string
 	// PlanArtifactLifetime, specifies how long plan artifact be valid.
 	PlanArtifactLifetime time.Duration
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
@@ -530,7 +531,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				SubchartNotes:                   opts.ShowSubchartNotes,
 				TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 				IgnoreBundleJS:                  opts.IgnoreBundleJS,
-				DenoBinaryPath:                  opts.DenoBinaryPath,
+				NodeBinaryPath:                  opts.NodeBinaryPath,
 				TempDirPath:                     opts.TempDirPath,
 			})
 			if err != nil {

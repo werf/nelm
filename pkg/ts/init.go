@@ -13,36 +13,34 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-const (
-	denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
-	denoDevScript   = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml src/index.ts --input-file ./input.example.yaml"
-	denoStartScript = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml dist/bundle.js --input-file ./input.example.yaml"
-)
+var chartTSIgnoreEntries = []string{
+	"ts/node_modules/",
+	"ts/.dev/",
+	"ts/.pnp.*",
+	"ts/.yarn/cache/",
+	"ts/.yarn/unplugged/",
+	"ts/.yarn/__virtual__/",
+	"ts/.yarn/install-state.gz",
+	"ts/.yarn/build-state.yml",
+}
 
 type InitTSBoilerplateOptions struct {
 	RenderContextType string
 }
 
 type initTmplData struct {
-	BuildScript       string
 	ChartName         string
-	DevScript         string
 	IsWerfChart       bool
+	PackageName       string
 	RenderContextType string
-	StartScript       string
 }
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
-	entries := []string{
-		"ts/node_modules/",
-		"ts/vendor/",
-	}
-
 	return ensureFileEntries(
 		filepath.Join(chartPath, ".gitignore"),
-		strings.Join(entries, "\n")+"\n",
-		entries,
+		strings.Join(chartTSIgnoreEntries, "\n")+"\n",
+		chartTSIgnoreEntries,
 	)
 }
 
@@ -52,7 +50,7 @@ func EnsureGitignore(chartPath string) error {
 func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
 	if _, err := os.Stat(tsDir); err == nil {
-		return fmt.Errorf("init chart structure: typescript directory already exists: %s", tsDir)
+		return fmt.Errorf("init chart structure: typescript directory already exists: %s: remove it to initialize the chart again, or, if installing the dependencies failed when it was initialized, install them by running the install command of the package manager there, such as \"npm install\"", tsDir)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
@@ -63,7 +61,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/", "ts/node_modules/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, chartTSIgnoreEntries); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 
@@ -88,12 +86,10 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 	}
 
 	data := initTmplData{
-		BuildScript:       denoBuildScript,
 		ChartName:         chartName,
-		DevScript:         denoDevScript,
 		IsWerfChart:       ctxType == common.TSWerfRenderContextType,
+		PackageName:       strings.ToLower(chartName) + "-ts",
 		RenderContextType: ctxType,
-		StartScript:       denoStartScript,
 	}
 
 	files := []struct {
@@ -104,7 +100,8 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
 		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
 		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
-		{tmpl: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
+		{tmpl: packageJSONTmpl, path: filepath.Join(tsDir, "package.json")},
+		{tmpl: tsconfigJSONTmpl, path: filepath.Join(tsDir, "tsconfig.json")},
 		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 

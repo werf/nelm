@@ -62,8 +62,6 @@ type ChartRenderOptions struct {
 	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
 	// (from the top-level chart and subcharts).
 	DefaultPatchesDisable bool
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
@@ -80,7 +78,8 @@ type ChartRenderOptions struct {
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
 	ExtraRuntimeAnnotations map[string]string
 	ExtraRuntimeLabels      map[string]string
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
@@ -116,6 +115,8 @@ type ChartRenderOptions struct {
 	NetworkParallelism int
 	// NoValuesSchemaValidation disables validation of values against the chart's JSON schema.
 	NoValuesSchemaValidation bool
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
+	NodeBinaryPath string
 	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
 	OutputFilePath string
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
@@ -302,7 +303,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 		TempDirPath:                     opts.TempDirPath,
 		IgnoreBundleJS:                  opts.IgnoreBundleJS,
-		DenoBinaryPath:                  opts.DenoBinaryPath,
+		NodeBinaryPath:                  opts.NodeBinaryPath,
 		LocalLookupResourcesPaths:       opts.LocalLookupResourcesPaths,
 		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
 	}

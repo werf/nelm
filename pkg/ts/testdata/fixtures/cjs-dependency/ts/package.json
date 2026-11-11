@@ -1,0 +1,7 @@
+{
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "cjs-dependency": "1.0.0"
+  }
+}

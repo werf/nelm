@@ -1,12 +1,20 @@
 package ts
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
@@ -17,21 +25,23 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
+const maxChartOutputLineBytes = 64 << 10
+
+func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
 	}
 
-	denoBin, err := getDenoBinary(ctx, denoBinaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("ensure Deno is available: %w", err)
-	}
-
-	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, func() (string, error) { return denoBin, nil }); err != nil {
+	if err := BundleChartsRecursive(ctx, chart, chartPath, rebuildBundle); err != nil {
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoBin)
+	nodeBin, err := findNode(ctx, nodeBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("find Node.js: %w", err)
+	}
+
+	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, nodeBin)
 	if err != nil {
 		return nil, fmt.Errorf("render chart recursive: %w", err)
 	}
@@ -39,14 +49,14 @@ func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues c
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
+func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, nodeBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	results := make(map[string]string)
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if bundle != nil {
-		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoBin)
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, nodeBin)
 		if err != nil {
 			return nil, fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 		}
@@ -73,7 +83,7 @@ func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values 
 			path.Join(pathPrefix, "charts", depAcc.Name()),
 			filepath.Join(chartPath, "charts", depAcc.Name()),
 			tempDirPath,
-			denoBin,
+			nodeBin,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("render dependency %q: %w", depAcc.Name(), err)
@@ -85,18 +95,30 @@ func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values 
 	return results, nil
 }
 
-func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, denoBin string) (string, error) {
-	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
-	if err := os.MkdirAll(renderDir, 0o755); err != nil {
+func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, nodeBin string) (string, error) {
+	renderParentDir := filepath.Join(tempDirPath, "typescript-render")
+	if err := os.MkdirAll(renderParentDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
 	}
+
+	renderDir, err := os.MkdirTemp(renderParentDir, "")
+	if err != nil {
+		return "", fmt.Errorf("create render dir: %w", err)
+	}
+
+	// The input holds the values, decrypted secrets included.
+	defer func() {
+		if err := os.RemoveAll(renderDir); err != nil {
+			log.Default.Warn(ctx, "Unable to remove %s: %s", renderDir, err)
+		}
+	}()
 
 	if err := writeInputRenderContext(renderedValues, chart, renderDir); err != nil {
 		return "", fmt.Errorf("write input render context: %w", err)
 	}
 
-	if err := runApp(ctx, bundle.Data, renderDir, denoBin); err != nil {
-		return "", fmt.Errorf("run deno app: %w", err)
+	if err := runBundle(ctx, nodeBin, renderDir, bundle.Data); err != nil {
+		return "", fmt.Errorf("run bundle: %w", err)
 	}
 
 	resultBytes, err := os.ReadFile(filepath.Join(renderDir, common.ChartTSOutputFile))
@@ -105,6 +127,102 @@ func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.
 	}
 
 	return strings.TrimSpace(string(resultBytes)), nil
+}
+
+// runBundle runs the bundle, passed through stdin, on the input file in renderDir. Node.js may read
+// only the input file and write only the output file, and gets no environment. This keeps a chart
+// and its dependencies from reaching the rest of the machine by accident, and is not meant to
+// contain malicious code: the Node.js permission model does not cover everything, such as sending
+// signals to other processes.
+func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) error {
+	absRenderDir, err := filepath.Abs(renderDir)
+	if err != nil {
+		return fmt.Errorf("get absolute path of %s: %w", renderDir, err)
+	}
+
+	resolvedRenderDir, err := filepath.EvalSymlinks(absRenderDir)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absRenderDir, err)
+	}
+
+	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
+	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
+
+	for _, path := range []string{inputPath, outputPath} {
+		if strings.Contains(path, "*") {
+			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a temporary directory and chart names without \"*\"", path)
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
+		"--permission",
+		// node:sqlite creates database files regardless of the permissions.
+		"--no-experimental-sqlite",
+		// V8 flags set at run time, such as those for traces, write files regardless of the permissions.
+		"--freeze-flags-after-init",
+		// Deprecation warnings of dependencies would look like errors of the chart.
+		"--no-deprecation",
+		"--allow-fs-read="+inputPath,
+		"--allow-fs-write="+outputPath,
+		// Without a package.json Node.js would guess the module type of stdin.
+		"--input-type=module",
+		"-",
+		"--input-file="+inputPath,
+		"--output-file="+outputPath,
+	)
+	cmd.Dir = resolvedRenderDir
+	cmd.Env = []string{}
+	cmd.Stdin = bytes.NewReader(bundle)
+
+	if runtime.GOOS == "windows" {
+		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("get stdout pipe: %w", err)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start process: %w", err)
+	}
+
+	stdoutErrChan := make(chan error, 1)
+	go func() {
+		stdoutErrChan <- readOutputLines(stdoutPipe, func(line string) {
+			log.Default.Debug(ctx, "%s", line)
+		})
+	}()
+
+	stderrErrChan := make(chan error, 1)
+	go func() {
+		stderrErrChan <- readOutputLines(stderrPipe, func(line string) {
+			log.Default.Error(ctx, "error from node app: %s", line)
+		})
+	}()
+
+	// Wait closes the pipes, so they are read to the end first.
+	stdoutErr := <-stdoutErrChan
+	stderrErr := <-stderrErrChan
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("wait process: %w", err)
+	}
+
+	if stdoutErr != nil {
+		return fmt.Errorf("read stdout: %w", stdoutErr)
+	}
+
+	if stderrErr != nil {
+		return fmt.Errorf("read stderr: %w", stderrErr)
+	}
+
+	return nil
 }
 
 func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart helmchart.Accessor) chartcommon.Values {
@@ -185,4 +303,63 @@ func buildChartMetadata(chart helmchart.Accessor) map[string]any {
 	}
 
 	return metadata
+}
+
+// readOutputLines passes what reader gives to onLine line by line, without "\n" or "\r\n" at the ends,
+// as bufio.Scanner does, and cuts lines longer than maxChartOutputLineBytes.
+func readOutputLines(reader io.Reader, onLine func(line string)) error {
+	bufferedReader := bufio.NewReaderSize(reader, maxChartOutputLineBytes)
+
+	for {
+		chunk, err := bufferedReader.ReadSlice('\n')
+
+		// The chunk is overwritten by the next read.
+		head := slices.Clone(chunk)
+		lineBytes := len(chunk)
+		lastBytes := slices.Clone(chunk[max(len(chunk)-2, 0):])
+
+		for errors.Is(err, bufio.ErrBufferFull) {
+			chunk, err = bufferedReader.ReadSlice('\n')
+			lineBytes += len(chunk)
+			lastBytes = append(lastBytes, chunk...)
+			lastBytes = slices.Clone(lastBytes[max(len(lastBytes)-2, 0):])
+		}
+
+		readBytes := lineBytes
+
+		if bytes.HasSuffix(lastBytes, []byte("\n")) {
+			lineBytes--
+			lastBytes = lastBytes[:len(lastBytes)-1]
+		}
+
+		if bytes.HasSuffix(lastBytes, []byte("\r")) {
+			lineBytes--
+		}
+
+		if lineBytes <= maxChartOutputLineBytes {
+			head = head[:lineBytes]
+		} else {
+			// Leaves room for the marker, so that the line with it stays within the limit, and does not
+			// cut a character.
+			keptBytes := maxChartOutputLineBytes - 64
+			for keptBytes > 0 && !utf8.RuneStart(head[keptBytes]) {
+				keptBytes--
+			}
+
+			head = fmt.Appendf(head[:keptBytes], " [line truncated, %d more bytes]", lineBytes-keptBytes)
+		}
+
+		// A final "\r" without "\n" is an empty line, as for bufio.Scanner.
+		if err == nil || readBytes > 0 {
+			onLine(string(head))
+		}
+
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return fmt.Errorf("read line: %w", err)
+		}
+	}
 }

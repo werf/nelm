@@ -1,12 +1,9 @@
 package ts
 
 var (
-	ChartTSBuildScript  = denoBuildScript
-	ChartTSDevScript    = denoDevScript
-	ChartTSStartScript  = denoStartScript
-	ExtractEmbeddedDeno = extractEmbeddedDeno
-	GetDenoBinary       = getDenoBinary
-	GetDownloadLink     = getDownloadLink
-	GetDenoFolder       = getDenoFolder
-	DenoBinaryName      = denoBinaryName
+	BuildBundle          = buildBundle
+	EnsureDependencies   = ensureDependencies
+	FindNode             = findNode
+	RenderChartRecursive = renderChartRecursive
+	RunBundle            = runBundle
 )

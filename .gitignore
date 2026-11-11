@@ -10,8 +10,7 @@
 /go.work
 /go.work.sum
 node_modules/
-/pkg/ts/embed/*/*/deno.gz
-/pkg/ts/embed/*/*/deno.gz.*.tmp
+!/pkg/ts/testdata/**/node_modules/
 /.opencode/
 /.sisyphus
 

@@ -69,8 +69,6 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
@@ -78,7 +76,8 @@ type ReleasePlanInstallOptions struct {
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
@@ -108,6 +107,8 @@ type ReleasePlanInstallOptions struct {
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
+	NodeBinaryPath string
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
@@ -291,7 +292,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 		TempDirPath:                     opts.TempDirPath,
 		IgnoreBundleJS:                  opts.IgnoreBundleJS,
-		DenoBinaryPath:                  opts.DenoBinaryPath,
+		NodeBinaryPath:                  opts.NodeBinaryPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)

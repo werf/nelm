@@ -1055,9 +1055,8 @@ func TestChartPack_TypeScriptBundle(t *testing.T) {
 			})
 
 			result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
-				DenoBinaryPath: filepath.Join(t.TempDir(), "deno"),
-				Destination:    t.TempDir(),
-				TSNoRebuild:    true,
+				Destination: t.TempDir(),
+				TSNoRebuild: true,
 			})
 			require.NoError(t, err)
 

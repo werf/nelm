@@ -1,26 +1,6 @@
 package ts
 
 const (
-	denoJSONTmpl = `{
-  "tasks": {
-    "build": {
-      "description": "Run deno build",
-      "command": "{{ .BuildScript }}"
-	},
-	"dev": {
-       "description": "Run in development mode",
-       "command": "{{ .DevScript }}"
-	},
-	"start": {
-      "description": "Run the bundled dist/bundle.js",
-	  "command": "{{ .StartScript }}"
-	}
-  },
-  "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.5"
-  }
-}
-`
 	deploymentTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
@@ -67,8 +47,14 @@ export function newDeployment($: {{ .RenderContextType }}): object {
 # negation (prefixed with !). Only one pattern per line.
 
 # TypeScript chart files
-ts/vendor/
 ts/node_modules/
+ts/.dev/
+ts/.pnp.*
+ts/.yarn/cache/
+ts/.yarn/unplugged/
+ts/.yarn/__virtual__/
+ts/.yarn/install-state.gz
+ts/.yarn/build-state.yml
 `
 	helpersTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 
@@ -112,7 +98,7 @@ export function getSelectorLabels($: {{ .RenderContextType }}): Record<string, s
   };
 }
 `
-	indexTSTmpl = `import { {{ .RenderContextType }}, RenderResult, render } from '@nelm/chart-ts-sdk';
+	indexTSTmpl = `import { type {{ .RenderContextType }}, type RenderResult, render } from '@nelm/chart-ts-sdk';
 import { newDeployment } from './deployment.ts';
 import { newService } from './service.ts';
 
@@ -209,6 +195,23 @@ Values:
     port: 80
     type: ClusterIP
 `
+	packageJSONTmpl = `{
+  "name": "{{ .PackageName }}",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "nelm-chart-ts dev --input-file input.example.yaml",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@nelm/chart-ts-sdk": "^0.2.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
+`
 	serviceTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
@@ -231,6 +234,22 @@ export function newService($: {{ .RenderContextType }}): object {
       selector: getSelectorLabels($),
     },
   };
+}
+`
+	tsconfigJSONTmpl = `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src"]
 }
 `
 	valuesYamlContent = `replicaCount: 1

@@ -29,15 +29,12 @@ import (
 	"golang.org/x/term"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 // Package is the action for packaging a chart.
@@ -63,8 +60,6 @@ type Package struct {
 	KeyFile               string
 	CaFile                string
 	InsecureSkipTLSVerify bool
-
-	TypeScriptOps common.TypeScriptOptions
 }
 
 const (
@@ -95,12 +90,6 @@ func (p *Package) Run(path string, _ map[string]any) (string, error) {
 	ac, err := ci.NewAccessor(ch)
 	if err != nil {
 		return "", err
-	}
-
-	if featgate.FeatGateTypescript.Enabled() {
-		if err := ts.BundleChartsRecursive(context.Background(), ac, path, true, p.TypeScriptOps.DenoBinaryPath); err != nil {
-			return "", fmt.Errorf("unable to process TypeScript files in chart: %w", err)
-		}
 	}
 
 	// If version is set, modify the version.
