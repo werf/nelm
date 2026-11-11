@@ -1,6 +1,6 @@
 {{ $_ := set . "App" "nelm" }}
 {{ $_ := set . "Distros" (list "alpine" "ubuntu" "ubuntu-node") }}
-{{ $_ := set . "DefaultGroupName" "1" }}
+{{ $_ := set . "DefaultGroupName" "2" }}
 {{ $_ := set . "DefaultChannelName" "stable" }}
 {{ $_ := set . "DefaultDistroName" "alpine" }}
 {{ $_ := set . "DefaultNodeDistroName" "ubuntu" }}
