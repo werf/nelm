@@ -69,7 +69,6 @@ type RenderChartOptions struct {
 	LocalLookupResourcesPaths       []string
 	NoStandaloneCRDs                bool
 	NoValuesSchemaValidation        bool
-	NodeBinaryPath                  string
 	Remote                          bool
 	SubchartNotes                   bool
 	TempDirPath                     string
@@ -399,7 +398,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if featgate.FeatGateTypescript.Enabled() {
 		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chartAccessor.Name())
 
-		jsRenderedTemplates, err := ts.RenderChart(ctx, chartAccessor, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.NodeBinaryPath)
+		jsRenderedTemplates, err := ts.RenderChart(ctx, chartAccessor, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath)
 		if err != nil {
 			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
 		}

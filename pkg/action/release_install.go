@@ -131,8 +131,6 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
-	NodeBinaryPath string
 	// PlanArtifactLifetime, specifies how long plan artifact be valid.
 	PlanArtifactLifetime time.Duration
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
@@ -531,7 +529,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				SubchartNotes:                   opts.ShowSubchartNotes,
 				TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 				IgnoreBundleJS:                  opts.IgnoreBundleJS,
-				NodeBinaryPath:                  opts.NodeBinaryPath,
 				TempDirPath:                     opts.TempDirPath,
 			})
 			if err != nil {

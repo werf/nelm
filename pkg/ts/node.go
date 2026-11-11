@@ -16,18 +16,13 @@ const (
 	nodeProbeMarker     = "nelm-node-probe:"
 )
 
-// findNode returns the real path of the Node.js binary to render with: binaryPath if set, otherwise
-// node from PATH. The candidate is run once with the environment of nelm, so that version manager
-// shims, which need it, resolve to the real binary, which is then run with an empty environment.
-func findNode(ctx context.Context, binaryPath string) (string, error) {
-	candidate := binaryPath
-	if candidate == "" {
-		path, err := exec.LookPath("node")
-		if err != nil {
-			return "", newNodeNotFoundError(fmt.Sprintf("no node in PATH: %s", err), "")
-		}
-
-		candidate = path
+// findNode returns the real path of the Node.js binary to render with, node from PATH. It is run once
+// with the environment of nelm, so that version manager shims, which need it, resolve to the real
+// binary, which is then run with an empty environment.
+func findNode(ctx context.Context) (string, error) {
+	candidate, err := exec.LookPath("node")
+	if err != nil {
+		return "", newNodeNotFoundError(fmt.Sprintf("no node in PATH: %s", err), "")
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -59,7 +54,7 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 }
 
 func newNodeNotFoundError(found, stderr string) error {
-	message := fmt.Sprintf("Node.js >= %d is required to render TypeScript charts, put it in PATH or pass --node-binary-path: %s", minNodeMajorVersion, found)
+	message := fmt.Sprintf("Node.js >= %d is required in PATH to render TypeScript charts: %s", minNodeMajorVersion, found)
 
 	if stderr = strings.TrimSpace(stderr); stderr != "" {
 		message += ": " + stderr

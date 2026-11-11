@@ -27,7 +27,7 @@ import (
 
 const maxChartOutputLineBytes = 64 << 10
 
-func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
 	}
@@ -36,7 +36,7 @@ func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues c
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	nodeBin, err := findNode(ctx, nodeBinaryPath)
+	nodeBin, err := findNode(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("find Node.js: %w", err)
 	}

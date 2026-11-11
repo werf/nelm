@@ -115,8 +115,6 @@ type ChartRenderOptions struct {
 	NetworkParallelism int
 	// NoValuesSchemaValidation disables validation of values against the chart's JSON schema.
 	NoValuesSchemaValidation bool
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
-	NodeBinaryPath string
 	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
 	OutputFilePath string
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
@@ -303,7 +301,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 		TempDirPath:                     opts.TempDirPath,
 		IgnoreBundleJS:                  opts.IgnoreBundleJS,
-		NodeBinaryPath:                  opts.NodeBinaryPath,
 		LocalLookupResourcesPaths:       opts.LocalLookupResourcesPaths,
 		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
 	}

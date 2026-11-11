@@ -53,7 +53,7 @@ func TestRenderChartRemovesRenderDir(t *testing.T) {
 }
 
 func TestRenderChartWithNode(t *testing.T) {
-	nodePath := requireTestNode(t)
+	putTestNodeInPath(t)
 
 	chartDir := copyTestChart(t)
 	chart := loadChart(t, chartDir)
@@ -61,7 +61,7 @@ func TestRenderChartWithNode(t *testing.T) {
 	rendered, err := ts.RenderChart(context.Background(), chart, chartcommon.Values{
 		"Release": map[string]any{"Name": "my-release"},
 		"Values":  map[string]any{"replicas": 2},
-	}, false, chartDir, t.TempDir(), nodePath)
+	}, false, chartDir, t.TempDir())
 	require.NoError(t, err)
 
 	require.Contains(t, rendered, "ts-chart/ts/src/index.ts")
