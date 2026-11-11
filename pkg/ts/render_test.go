@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -179,41 +178,8 @@ func TestRunBundleOutput(t *testing.T) {
 	catPath, err := exec.LookPath("cat")
 	require.NoError(t, err)
 
-	// runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr
-	// lines logged. The fake Node.js is a single process, so stopping it stops writing.
-	runOutput := func(t *testing.T, output string) []string {
-		t.Helper()
-
-		logger := recordLogs(t)
-
-		outputPath := filepath.Join(t.TempDir(), "output")
-		require.NoError(t, os.WriteFile(outputPath, []byte(output), 0o644))
-
-		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nexec "+catPath+" '"+outputPath+"' >&2\n"), 0o755))
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		done := make(chan error, 1)
-		go func() { done <- ts.RunBundle(ctx, nodePath, t.TempDir(), []byte("")) }()
-
-		select {
-		case err := <-done:
-			require.NoError(t, err)
-		case <-time.After(30 * time.Second):
-			cancel()
-			require.Error(t, <-done, "the stopped render must fail")
-			require.FailNow(t, "the render must not hang")
-		}
-
-		return lo.Map(logMessages(logger.entries(), "error"), func(message string, _ int) string {
-			return strings.TrimPrefix(message, "error from node app: ")
-		})
-	}
-
 	t.Run("truncates a long line and goes on reading", func(t *testing.T) {
-		lines := runOutput(t, strings.Repeat("x", 1<<20)+"\nafter the long line\n")
+		lines := runOutput(t, catPath, strings.Repeat("x", 1<<20)+"\nafter the long line\n")
 
 		require.Len(t, lines, 2)
 		assert.True(t, strings.HasPrefix(lines[0], strings.Repeat("x", 60<<10)))
@@ -223,19 +189,25 @@ func TestRunBundleOutput(t *testing.T) {
 	})
 
 	t.Run("drops carriage returns at the ends of lines", func(t *testing.T) {
-		assert.Equal(t, []string{"a", "b", "c\rd", "last"}, runOutput(t, "a\r\nb\r\nc\rd\nlast\r"))
+		assert.Equal(t, []string{"a", "b", "c\rd", "last"}, runOutput(t, catPath, "a\r\nb\r\nc\rd\nlast\r"))
+	})
+
+	t.Run("keeps empty lines of carriage returns alone", func(t *testing.T) {
+		assert.Equal(t, []string{""}, runOutput(t, catPath, "\r"))
+		assert.Equal(t, []string{"a", ""}, runOutput(t, catPath, "a\n\r"))
+		assert.Equal(t, []string{"a", ""}, runOutput(t, catPath, "a\n\r\n"))
 	})
 
 	t.Run("keeps a line of exactly the limit whole", func(t *testing.T) {
 		fullLine := strings.Repeat("x", 64<<10)
 
-		assert.Equal(t, []string{fullLine, fullLine, "next"}, runOutput(t, fullLine+"\r\n"+fullLine+"\nnext\n"))
+		assert.Equal(t, []string{fullLine, fullLine, "next"}, runOutput(t, catPath, fullLine+"\r\n"+fullLine+"\nnext\n"))
 	})
 
 	t.Run("does not cut a character when truncating a line", func(t *testing.T) {
 		line := strings.Repeat("x", 65471) + "é" + strings.Repeat("y", 200)
 
-		lines := runOutput(t, line+"\r\n")
+		lines := runOutput(t, catPath, line+"\r\n")
 
 		require.Len(t, lines, 1)
 		assert.True(t, utf8.ValidString(lines[0]), "the truncated line must be valid UTF-8")

@@ -332,6 +332,8 @@ func readOutputLines(reader io.Reader, onLine func(line string)) error {
 			lastBytes = slices.Clone(lastBytes[max(len(lastBytes)-2, 0):])
 		}
 
+		readBytes := lineBytes
+
 		if bytes.HasSuffix(lastBytes, []byte("\n")) {
 			lineBytes--
 			lastBytes = lastBytes[:len(lastBytes)-1]
@@ -354,7 +356,8 @@ func readOutputLines(reader io.Reader, onLine func(line string)) error {
 			head = fmt.Appendf(head[:keptBytes], " [line truncated, %d more bytes]", lineBytes-keptBytes)
 		}
 
-		if err == nil || len(head) > 0 {
+		// A final "\r" without "\n" is an empty line, as for bufio.Scanner.
+		if err == nil || readBytes > 0 {
 			onLine(string(head))
 		}
 
