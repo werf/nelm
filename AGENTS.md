@@ -47,6 +47,22 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 - Errors: ALWAYS wrap with context: `fmt.Errorf("read config: %w", err)`. Describe what is being done, not what failed. Use `MultiError{}` for aggregation. Panic on programmer errors. Prefer one-line `if err := ...; err != nil`.
 - Concurrency: use `Concurrent{}` helper instead of raw mutexes.
 
+### Nelm-specific (MANDATORY)
+
+> The code style rules below are adapted from [CODESTYLE.md](CODESTYLE.md). If you are asked to update code style rules, update CODESTYLE.md first, then regenerate this section to match, using ALWAYS/NEVER/MUST phrasing.
+
+- CLI commands MUST only map flags to `<Action>Options` (`cli.AddFlag`) and call the action. ALWAYS put all logic in the action. Model new commands on `release install`.
+- NEVER keep a no-op option as deprecated: remove it.
+- NEVER mention CLI flag names (`--set`) in errors, logs or comments under `pkg/`. Say "set values".
+- NEVER mention werf concepts in Nelm code, messages or docs (werf, its commands, "env", "service values"). ALWAYS use Nelm terms: extra values, runtime annotations. Data names like `.werf-data` or `werf.io/*` are fine.
+- `pkg/helm` is an upstream fork: ALWAYS keep diffs to upstream files minimal, NEVER touch upstream comments, ALWAYS put Nelm code into `*_nelm.go` / `*_nelm_test.go`.
+- ALWAYS check `go.mod` for a library before hand-writing a parser, regex or algorithm.
+- ALWAYS fix bugs where they live, not with workarounds in consumers. Prefer rejecting odd input to re-plumbing.
+- ALWAYS keep comments and key order when rewriting user YAML (`goccy/go-yaml`).
+- ALWAYS reason about compatibility per major version only.
+- ALWAYS delete what a change leaves unused, in werf and common-go too.
+- NEVER add README or doc sections nobody asked for.
+
 ### Go standard guidelines (MANDATORY)
 
 Follow [Effective Go](https://go.dev/doc/effective_go) and [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments). Commonly violated rules:
