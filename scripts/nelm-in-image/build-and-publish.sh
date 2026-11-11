@@ -34,7 +34,7 @@ export WERF_EXPORT_ADD_LABEL_AH1=io.artifacthub.package.readme-url=https://raw.g
 
 if [[ "$FORCE_PUBLISH" == "true" ]]; then
   echo "FORCE_PUBLISH is true — exporting all images"
-  werf export --config "$2.yaml" --tag "$DEST_SUBREPO/$2:%image%"
+  werf export --tag "$DEST_SUBREPO/$2:%image%"
   exit 0
 fi
 
@@ -87,4 +87,4 @@ fi
 
 glob_patterns=($(printf "%s\n" "${glob_patterns[@]}" | sort -u))
 export_globs=$(IFS=" "; echo "${glob_patterns[*]}")
-werf export $export_globs --config "$2.yaml" --tag "$DEST_SUBREPO/$2:%image%" 
+werf export $export_globs --tag "$DEST_SUBREPO/$2:%image%" 
