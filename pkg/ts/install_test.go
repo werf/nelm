@@ -27,6 +27,7 @@ func TestEnsureDependencies(t *testing.T) {
 		files       map[string]string
 		tsDir       string
 		yarnVersion string
+		yarnStderr  string
 		wantManager string
 		wantArgs    []string
 		wantDir     string
@@ -85,6 +86,13 @@ func TestEnsureDependencies(t *testing.T) {
 			wantManager: "pnpm",
 			wantArgs:    pnpmFrozen,
 			wantDir:     ".",
+		},
+		"runs a yarn berry install with corepack downloading yarn": {
+			files:       map[string]string{"ts/yarn.lock": "__metadata:\n  version: 8\n"},
+			yarnVersion: "4.18.1",
+			yarnStderr:  "! Corepack is about to download https://repo.yarnpkg.com/4.18.1/packages/yarnpkg-cli/bin/yarn.js\n\n",
+			wantManager: "yarn",
+			wantArgs:    yarnBerryImmutable,
 		},
 		"runs a yarn berry install in the ancestor with yarn.lock": {
 			files:       map[string]string{"yarn.lock": "__metadata:\n  version: 8\n"},
@@ -148,7 +156,7 @@ func TestEnsureDependencies(t *testing.T) {
 				yarnVersion = "1.22.22"
 			}
 
-			writeYarnStub(t, binDir, yarnVersion)
+			writeYarnStub(t, binDir, yarnVersion, test.yarnStderr)
 
 			tsDir := test.tsDir
 			if tsDir == "" {
@@ -225,7 +233,7 @@ func TestEnsureDependencies(t *testing.T) {
 			}
 
 			if test.yarnVersion != "" {
-				writeYarnStub(t, binDir, test.yarnVersion)
+				writeYarnStub(t, binDir, test.yarnVersion, "")
 			}
 
 			tsDir := test.tsDir
@@ -355,6 +363,19 @@ func TestEnsureDependencies(t *testing.T) {
 		assert.Contains(t, err.Error(), "TypeScript charts now run on Node.js")
 		assert.Contains(t, err.Error(), "nelm chart ts init")
 		requireStubNotRun(t, binDir, "npm")
+	})
+
+	t.Run("fails with the stderr of yarn when it cannot tell its version", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "yarn", "printf 'Usage Error: corepack cannot download yarn\\n' >&2\nexit 1\n")
+
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{"ts/package.json": packageJSON, "ts/yarn.lock": ""})
+
+		err := ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "ts"), false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `run "yarn --version" in `)
+		assert.Contains(t, err.Error(), "exit status 1: Usage Error: corepack cannot download yarn")
 	})
 
 	t.Run("fails without the package manager in PATH and does not fall back to another", func(t *testing.T) {

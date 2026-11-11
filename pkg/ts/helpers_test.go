@@ -95,8 +95,6 @@ type stubRun struct {
 	dir    string
 }
 
-// writeStub writes an executable named name into binDir that records how it was run and then runs
-// body.
 // runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
 // logged. The fake Node.js is a single process, so stopping it stops writing.
 func runOutput(t *testing.T, catPath, output string) []string {
@@ -300,16 +298,19 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
+// writeStub writes an executable named name into binDir that records how it was run and then runs
+// body.
 func writeStub(t *testing.T, binDir, name, body string) {
 	t.Helper()
 
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, name), []byte(stubScript+body), 0o755))
 }
 
-// writeYarnStub writes a yarn stub, which prints version for "yarn --version" without recording it.
-func writeYarnStub(t *testing.T, binDir, version string) {
+// writeYarnStub writes a yarn stub, which prints stderr to stderr and version to stdout for
+// "yarn --version" without recording it, as corepack does when it downloads yarn.
+func writeYarnStub(t *testing.T, binDir, version, stderr string) {
 	t.Helper()
 
-	script := strings.Replace(stubScript, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s\\n' '"+version+"'; exit 0; fi\n", 1)
+	script := strings.Replace(stubScript, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s' '"+stderr+"' >&2; printf '%s\\n' '"+version+"'; exit 0; fi\n", 1)
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "yarn"), []byte(script), 0o755))
 }

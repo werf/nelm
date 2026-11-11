@@ -36,6 +36,14 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("get absolute path: %w", err)
 	}
 
+	// The messages name where the chart really is, as those of installing its dependencies do.
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absPath, err)
+	}
+
+	absPath = resolvedPath
+
 	if !featgate.FeatGateTypescript.Enabled() {
 		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")
 

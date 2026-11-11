@@ -3,6 +3,7 @@ package ts
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -148,12 +149,17 @@ func checkYarnVersion(ctx context.Context, installDir, yarnPath string) error {
 	cmd := exec.CommandContext(ctx, yarnPath, "--version")
 	cmd.Dir = installDir
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("run \"yarn --version\" in %s: %w: %s", installDir, err, strings.TrimSpace(string(output)))
+	// Only stdout has the version: corepack tells on stderr that it downloads yarn.
+	output, err := cmd.Output()
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
+		return fmt.Errorf("run \"yarn --version\" in %s: %w: %s", installDir, err, strings.TrimSpace(string(exitErr.Stderr)))
+	} else if err != nil {
+		return fmt.Errorf("run \"yarn --version\" in %s: %w", installDir, err)
 	}
 
-	version := strings.TrimSpace(string(output))
+	version := lo.LastOr(lo.Compact(lo.Map(strings.Split(string(output), "\n"), func(line string, _ int) string {
+		return strings.TrimSpace(line)
+	})), "")
 
 	major, err := strconv.Atoi(strings.Split(version, ".")[0])
 	if err != nil {
