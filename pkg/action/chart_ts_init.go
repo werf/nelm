@@ -57,6 +57,14 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		return fmt.Errorf("create directory %s: %w", absPath, err)
 	}
 
+	// Dependencies are installed where the chart really is, which is the path in all the messages.
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absPath, err)
+	}
+
+	absPath = resolvedPath
+
 	if err := ts.InitChartStructure(ctx, absPath, chartName); err != nil {
 		return fmt.Errorf("init chart structure: %w", err)
 	}

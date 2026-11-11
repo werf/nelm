@@ -26,6 +26,7 @@ func TestEnsureDependencies(t *testing.T) {
 	for name, test := range map[string]struct {
 		files       map[string]string
 		tsDir       string
+		yarnVersion string
 		wantManager string
 		wantArgs    []string
 		wantDir     string
@@ -52,6 +53,7 @@ func TestEnsureDependencies(t *testing.T) {
 		},
 		"runs an immutable yarn berry install with __metadata in yarn.lock": {
 			files:       map[string]string{"ts/yarn.lock": "__metadata:\n  version: 8\n  cacheKey: 10c0\n"},
+			yarnVersion: "4.18.1",
 			wantManager: "yarn",
 			wantArgs:    yarnBerryImmutable,
 		},
@@ -87,6 +89,7 @@ func TestEnsureDependencies(t *testing.T) {
 		"runs a yarn berry install in the ancestor with yarn.lock": {
 			files:       map[string]string{"yarn.lock": "__metadata:\n  version: 8\n"},
 			tsDir:       "charts/app/ts",
+			yarnVersion: "2.4.3",
 			wantManager: "yarn",
 			wantArgs:    yarnBerryImmutable,
 			wantDir:     ".",
@@ -140,6 +143,13 @@ func TestEnsureDependencies(t *testing.T) {
 				writeStub(t, binDir, manager, "")
 			}
 
+			yarnVersion := test.yarnVersion
+			if yarnVersion == "" {
+				yarnVersion = "1.22.22"
+			}
+
+			writeYarnStub(t, binDir, yarnVersion)
+
 			tsDir := test.tsDir
 			if tsDir == "" {
 				tsDir = "ts"
@@ -169,9 +179,10 @@ func TestEnsureDependencies(t *testing.T) {
 	}
 
 	for name, test := range map[string]struct {
-		files   map[string]string
-		tsDir   string
-		wantErr []string
+		files       map[string]string
+		tsDir       string
+		yarnVersion string
+		wantErr     []string
 	}{
 		"fails with lock files of several package managers in one directory": {
 			files:   map[string]string{"ts/package-lock.json": "{}", "ts/yarn.lock": ""},
@@ -185,6 +196,22 @@ func TestEnsureDependencies(t *testing.T) {
 		"fails without a lock file": {
 			wantErr: []string{"no lock file", `run "npm install" in`, "commit the lock file"},
 		},
+		"fails with a yarn.lock of yarn berry and yarn classic in PATH": {
+			files:       map[string]string{"ts/yarn.lock": "__metadata:\n  version: 8\n"},
+			yarnVersion: "1.22.22",
+			wantErr:     []string{"yarn.lock", "is of Yarn 2 or later", "yarn in PATH is 1.22.22"},
+		},
+		"fails with a yarn.lock of yarn classic and yarn berry in PATH": {
+			files:       map[string]string{"yarn.lock": "# yarn lockfile v1\n"},
+			tsDir:       "charts/app/ts",
+			yarnVersion: "4.18.1",
+			wantErr:     []string{"yarn.lock", "is of Yarn 1", "yarn in PATH is 4.18.1"},
+		},
+		"fails when yarn cannot tell its version": {
+			files:       map[string]string{"ts/yarn.lock": ""},
+			yarnVersion: "unknown",
+			wantErr:     []string{"yarn --version", `"unknown"`},
+		},
 		"fails without a lock file below .git with one above it": {
 			files:   map[string]string{"package-lock.json": "{}", "repo/.git/": ""},
 			tsDir:   "repo/charts/app/ts",
@@ -195,6 +222,10 @@ func TestEnsureDependencies(t *testing.T) {
 			binDir := stubPath(t)
 			for _, manager := range allPackageManagers {
 				writeStub(t, binDir, manager, "")
+			}
+
+			if test.yarnVersion != "" {
+				writeYarnStub(t, binDir, test.yarnVersion)
 			}
 
 			tsDir := test.tsDir
@@ -225,9 +256,6 @@ func TestEnsureDependencies(t *testing.T) {
 	}{
 		"there is no package.json": {
 			files: map[string]string{"ts/package-lock.json": "{}", "ts/src/index.js": ""},
-		},
-		"node_modules exists in ts without a lock file anywhere": {
-			files: map[string]string{"ts/package.json": packageJSON, "ts/node_modules/": ""},
 		},
 		"node_modules exists in ts with the lock file": {
 			files: map[string]string{"ts/package.json": packageJSON, "ts/package-lock.json": "{}", "ts/node_modules/": ""},
@@ -265,6 +293,37 @@ func TestEnsureDependencies(t *testing.T) {
 			}
 		})
 	}
+
+	for _, marker := range []string{"node_modules/", ".pnp.cjs"} {
+		t.Run("warns without a lock file anywhere and "+marker+" in ts", func(t *testing.T) {
+			logger := recordLogs(t)
+
+			binDir := stubPath(t)
+			writeStub(t, binDir, "npm", "")
+
+			projectDir := filepath.Join(t.TempDir(), "project")
+			writeFiles(t, projectDir, map[string]string{"ts/package.json": packageJSON, "ts/" + marker: ""})
+
+			require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "ts"), false))
+			requireStubNotRun(t, binDir, "npm")
+
+			tsDir := resolvePath(t, filepath.Join(projectDir, "ts"))
+			assert.Equal(t, []string{`No lock file in ` + tsDir + ` or above, so the dependencies installed there may differ elsewhere: run "npm install" in ` + tsDir + ` and commit the lock file`}, logMessages(logger.entries(), "warn"))
+		})
+	}
+
+	t.Run("tells the exact command without a lock file", func(t *testing.T) {
+		stubPath(t)
+
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{"ts/package.json": packageJSON})
+
+		err := ts.EnsureDependencies(context.Background(), filepath.Join(projectDir, "ts"), false)
+		require.Error(t, err)
+
+		tsDir := resolvePath(t, filepath.Join(projectDir, "ts"))
+		assert.Equal(t, `no lock file in `+tsDir+` or above: run "npm install" in `+tsDir+` and commit the lock file`, err.Error())
+	})
 
 	t.Run("installs with node_modules in ts when the lock file is in the ancestor", func(t *testing.T) {
 		binDir := stubPath(t)
@@ -361,22 +420,14 @@ func TestInstallDependencies(t *testing.T) {
 		assert.Equal(t, resolvePath(t, filepath.Join(projectDir, "chart", "ts")), run.dir)
 	})
 
-	for name, test := range map[string]struct {
-		files       map[string]string
-		wantCommand string
-	}{
-		"npm workspace that is not installed": {
-			files:       map[string]string{"package.json": `{"workspaces": ["charts/*/ts"]}`, "package-lock.json": "{}"},
-			wantCommand: `"npm install"`,
-		},
+	for name, files := range map[string]map[string]string{
+		"npm workspace that is not installed": {"package.json": `{"workspaces": ["charts/*/ts"]}`, "package-lock.json": "{}"},
 		"npm workspace that is installed without the dependencies of the chart": {
-			files:       map[string]string{"package.json": `{"workspaces": ["charts/*/ts"]}`, "package-lock.json": "{}", "node_modules/": ""},
-			wantCommand: `"npm install"`,
+			"package.json":      `{"workspaces": ["charts/*/ts"]}`,
+			"package-lock.json": "{}",
+			"node_modules/":     "",
 		},
-		"pnpm workspace": {
-			files:       map[string]string{"pnpm-workspace.yaml": "packages:\n  - 'charts/*/ts'\n", "pnpm-lock.yaml": ""},
-			wantCommand: `"pnpm install"`,
-		},
+		"pnpm workspace": {"pnpm-workspace.yaml": "packages:\n  - 'charts/*/ts'\n", "pnpm-lock.yaml": ""},
 	} {
 		t.Run("tells how to install without installing under the lock file of an ancestor in an "+name, func(t *testing.T) {
 			logger := recordLogs(t)
@@ -387,7 +438,7 @@ func TestInstallDependencies(t *testing.T) {
 			}
 
 			projectDir := filepath.Join(t.TempDir(), "project")
-			writeFiles(t, projectDir, test.files)
+			writeFiles(t, projectDir, files)
 			writeFiles(t, projectDir, map[string]string{"charts/app/ts/package.json": "{}"})
 
 			require.NoError(t, ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "charts", "app")))
@@ -396,11 +447,8 @@ func TestInstallDependencies(t *testing.T) {
 				requireStubNotRun(t, binDir, manager)
 			}
 
-			hints := logMessages(logger.entries(), "warn")
-			require.Len(t, hints, 1)
-			assert.Contains(t, hints[0], "run "+test.wantCommand+" in "+resolvePath(t, projectDir))
-			assert.Contains(t, hints[0], "workspaces in package.json or pnpm-workspace.yaml")
-			assert.Contains(t, hints[0], `run "cd `+resolvePath(t, filepath.Join(projectDir, "charts", "app", "ts"))+` && npm install"`)
+			tsDir := resolvePath(t, filepath.Join(projectDir, "charts", "app", "ts"))
+			assert.Equal(t, []string{"Dependencies of " + tsDir + " are not installed: the closest lock file is in " + resolvePath(t, projectDir) + ". Set up the workspace and/or install the dependencies manually."}, logMessages(logger.entries(), "warn"))
 		})
 	}
 
@@ -431,6 +479,18 @@ func TestInstallDependencies(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "The chart files are created")
 		assert.Contains(t, err.Error(), `run "npm install --ignore-scripts --no-audit --no-fund --workspaces=false" in `+resolvePath(t, filepath.Join(chartDir, "ts")))
+	})
+
+	t.Run("tells how to finish with the lock file in ts without its package manager in PATH", func(t *testing.T) {
+		stubPath(t)
+
+		chartDir := filepath.Join(t.TempDir(), "chart")
+		writeFiles(t, chartDir, map[string]string{"ts/package.json": "{}", "ts/pnpm-lock.yaml": ""})
+
+		err := ts.InstallDependencies(context.Background(), chartDir)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "package manager pnpm is not found in PATH")
+		assert.Contains(t, err.Error(), `The chart files are created: once the problem is fixed, run "pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace" in `+resolvePath(t, filepath.Join(chartDir, "ts")))
 	})
 
 	t.Run("tells how to finish without the package manager in PATH", func(t *testing.T) {

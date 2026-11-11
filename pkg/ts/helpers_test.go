@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,7 @@ import (
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 const (
@@ -91,6 +93,41 @@ type stubRun struct {
 	args   []string
 	canary string
 	dir    string
+}
+
+// writeStub writes an executable named name into binDir that records how it was run and then runs
+// body.
+// runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
+// logged. The fake Node.js is a single process, so stopping it stops writing.
+func runOutput(t *testing.T, catPath, output string) []string {
+	t.Helper()
+
+	logger := recordLogs(t)
+
+	outputPath := filepath.Join(t.TempDir(), "output")
+	require.NoError(t, os.WriteFile(outputPath, []byte(output), 0o644))
+
+	nodePath := filepath.Join(t.TempDir(), "node")
+	require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nexec "+catPath+" '"+outputPath+"' >&2\n"), 0o755))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- ts.RunBundle(ctx, nodePath, t.TempDir(), []byte("")) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(30 * time.Second):
+		cancel()
+		require.Error(t, <-done, "the stopped render must fail")
+		require.FailNow(t, "the render must not hang")
+	}
+
+	return lo.Map(logMessages(logger.entries(), "error"), func(message string, _ int) string {
+		return strings.TrimPrefix(message, "error from node app: ")
+	})
 }
 
 // stubPath makes PATH hold nothing but a new directory and returns it.
@@ -263,10 +300,16 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// writeStub writes an executable named name into binDir that records how it was run and then runs
-// body.
 func writeStub(t *testing.T, binDir, name, body string) {
 	t.Helper()
 
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, name), []byte(stubScript+body), 0o755))
+}
+
+// writeYarnStub writes a yarn stub, which prints version for "yarn --version" without recording it.
+func writeYarnStub(t *testing.T, binDir, version string) {
+	t.Helper()
+
+	script := strings.Replace(stubScript, "#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s\\n' '"+version+"'; exit 0; fi\n", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, "yarn"), []byte(script), 0o755))
 }

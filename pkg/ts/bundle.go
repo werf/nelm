@@ -106,11 +106,18 @@ func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) 
 		unresolved := lo.ContainsBy(result.Errors, func(message api.Message) bool {
 			return strings.HasPrefix(message.Text, "Could not resolve")
 		})
-		if unresolved {
-			return nil, fmt.Errorf("%w\nIf a package is missing, install the dependencies of %s with the package manager of the lock file in ts/ or in the workspace root", err, tsDir)
+		if !unresolved {
+			return nil, err
 		}
 
-		return nil, err
+		hint, hintErr := installHint(tsDir)
+		if hintErr != nil {
+			log.Default.Debug(ctx, "Cannot tell how to install the dependencies of %s: %s", tsDir, hintErr)
+
+			return nil, err
+		}
+
+		return nil, fmt.Errorf("%w\nIf a package is missing, install the dependencies: %s", err, hint)
 	}
 
 	if err := checkExternalImports(result.Metafile); err != nil {

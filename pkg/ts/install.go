@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/samber/lo"
@@ -44,24 +45,20 @@ func InstallDependencies(ctx context.Context, chartPath string) error {
 // manager of the closest lock file, in its directory. Whether that directory is a workspace with tsDir
 // in it is up to the user, as with Pulumi.
 func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) error {
-	absTSDir, err := filepath.Abs(tsDir)
+	// The lock file is looked for among the ancestors of where the chart really is, so this path is
+	// also the one in the messages.
+	tsDir, err := resolvePath(tsDir)
 	if err != nil {
-		return fmt.Errorf("get absolute path of %s: %w", tsDir, err)
+		return err
 	}
 
-	hasPackageJSON, err := fileExists(filepath.Join(absTSDir, "package.json"))
+	hasPackageJSON, err := fileExists(filepath.Join(tsDir, "package.json"))
 	if err != nil {
 		return fmt.Errorf("check package.json: %w", err)
 	}
 
 	if !hasPackageJSON {
-		return checkNotDenoChart(ctx, absTSDir)
-	}
-
-	// The lock file is looked for among the ancestors of where the chart really is.
-	tsDir, err = filepath.EvalSymlinks(absTSDir)
-	if err != nil {
-		return fmt.Errorf("resolve symlinks in %s: %w", absTSDir, err)
+		return checkNotDenoChart(ctx, tsDir)
 	}
 
 	installDir, managerName, err := findLockFile(tsDir)
@@ -72,45 +69,52 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 	// The workspace of the lock file and its lock file are up to the user, so chart ts init only tells
 	// how to install.
 	if createLockFile && installDir != "" && installDir != tsDir {
-		log.Default.Warn(ctx, "Dependencies of %s are not installed, as the closest lock file is in %s: to make the chart a member of the workspace there, add %s to it (workspaces in package.json or pnpm-workspace.yaml) and run %q in %s; to keep the chart standalone, run %q", tsDir, installDir, tsDir, managerName+" install", installDir, "cd "+tsDir+" && npm install")
+		log.Default.Warn(ctx, "Dependencies of %s are not installed: the closest lock file is in %s. Set up the workspace and/or install the dependencies manually.", tsDir, installDir)
 
 		return nil
 	}
 
-	// Without a lock file the dependencies go to tsDir, as chart ts init installs them.
-	lockFileFound := installDir != ""
-	if !lockFileFound {
-		installDir, managerName = tsDir, packageManagerNPM
+	if installDir == "" && createLockFile {
+		args := append([]string{"install", "--ignore-scripts", "--no-audit", "--no-fund"}, isolationArgs(packageManagerNPM)...)
+
+		return runInstall(ctx, tsDir, packageManagerNPM, args, createLockFile)
 	}
 
-	for _, marker := range []string{"node_modules", ".pnp.cjs"} {
-		if exists, err := fileExists(filepath.Join(installDir, marker)); err != nil {
-			return fmt.Errorf("check installed dependencies: %w", err)
-		} else if exists {
-			log.Default.Debug(ctx, "Dependencies in %s are already installed: %s exists", installDir, marker)
-
-			return nil
-		}
-	}
-
-	if !lockFileFound && !createLockFile {
-		return fmt.Errorf("no lock file in %s or above: run \"npm install\" in %s and commit the lock file", tsDir, tsDir)
-	}
-
-	args := []string{"install", "--ignore-scripts", "--no-audit", "--no-fund"}
-	if lockFileFound {
-		if args, err = installArgs(installDir, managerName); err != nil {
+	if installDir == "" {
+		installed, err := dependenciesInstalled(ctx, tsDir)
+		if err != nil {
 			return err
 		}
+
+		if !installed {
+			return fmt.Errorf("no lock file in %s or above: run %q in %s and commit the lock file", tsDir, "npm install", tsDir)
+		}
+
+		log.Default.Warn(ctx, "No lock file in %s or above, so the dependencies installed there may differ elsewhere: run %q in %s and commit the lock file", tsDir, "npm install", tsDir)
+
+		return nil
 	}
 
-	// Otherwise npm and pnpm would install a workspace above that does not include the chart.
-	if installDir == tsDir && managerName == packageManagerNPM {
-		args = append(args, "--workspaces=false")
-	} else if installDir == tsDir && managerName == packageManagerPNPM {
-		args = append(args, "--ignore-workspace")
+	if installed, err := dependenciesInstalled(ctx, installDir); err != nil || installed {
+		return err
 	}
 
+	yarnBerry, err := isYarnBerryLockFile(installDir, managerName)
+	if err != nil {
+		return err
+	}
+
+	args := installArgs(managerName, yarnBerry)
+	if installDir == tsDir {
+		args = append(args, isolationArgs(managerName)...)
+	}
+
+	return runInstall(ctx, installDir, managerName, args, createLockFile)
+}
+
+// runInstall runs the package manager, after checking that a yarn in PATH reads a yarn.lock of
+// its format, which yarn classic would otherwise rewrite while running scripts of packages.
+func runInstall(ctx context.Context, installDir, managerName string, args []string, createLockFile bool) error {
 	// In chart ts init the chart files are already created, so the user only has to finish the install.
 	nextStep := func(err error) error {
 		if err == nil || !createLockFile {
@@ -125,7 +129,74 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return nextStep(fmt.Errorf("install dependencies in %s: package manager %s is not found in PATH: %w", installDir, managerName, err))
 	}
 
+	if managerName == packageManagerYarn {
+		if err := checkYarnVersion(ctx, installDir, managerPath); err != nil {
+			return nextStep(err)
+		}
+	}
+
 	return nextStep(runPackageManager(ctx, installDir, managerPath, managerName, args))
+}
+
+func checkYarnVersion(ctx context.Context, installDir, yarnPath string) error {
+	yarnBerry, err := isYarnBerryLockFile(installDir, packageManagerYarn)
+	if err != nil {
+		return err
+	}
+
+	// Run in installDir, where .yarnrc.yml may set the yarn to use.
+	cmd := exec.CommandContext(ctx, yarnPath, "--version")
+	cmd.Dir = installDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("run \"yarn --version\" in %s: %w: %s", installDir, err, strings.TrimSpace(string(output)))
+	}
+
+	version := strings.TrimSpace(string(output))
+
+	major, err := strconv.Atoi(strings.Split(version, ".")[0])
+	if err != nil {
+		return fmt.Errorf("parse version %q printed by \"yarn --version\" in %s: %w", version, installDir, err)
+	}
+
+	switch {
+	case yarnBerry && major < 2:
+		return fmt.Errorf("yarn.lock in %s is of Yarn 2 or later, but yarn in PATH is %s: put the yarn of the project in PATH", installDir, version)
+	case !yarnBerry && major >= 2:
+		return fmt.Errorf("yarn.lock in %s is of Yarn 1, but yarn in PATH is %s: put the yarn of the project in PATH", installDir, version)
+	}
+
+	return nil
+}
+
+// installHint tells how to install the dependencies of tsDir, for the errors of bundling.
+func installHint(tsDir string) (string, error) {
+	tsDir, err := resolvePath(tsDir)
+	if err != nil {
+		return "", err
+	}
+
+	installDir, managerName, err := findLockFile(tsDir)
+	if err != nil {
+		return "", fmt.Errorf("find lock file of %s: %w", tsDir, err)
+	}
+
+	switch installDir {
+	case "":
+		return fmt.Sprintf("run %q in %s and commit the lock file", "npm install", tsDir), nil
+	case tsDir:
+		yarnBerry, err := isYarnBerryLockFile(installDir, managerName)
+		if err != nil {
+			return "", err
+		}
+
+		args := append(installArgs(managerName, yarnBerry), isolationArgs(managerName)...)
+
+		return fmt.Sprintf("run %q in %s", managerName+" "+strings.Join(args, " "), tsDir), nil
+	default:
+		return fmt.Sprintf("the closest lock file is in %s, so make sure %s is in the workspace there and run %q in %s", installDir, tsDir, managerName+" install", installDir), nil
+	}
 }
 
 func checkNotDenoChart(ctx context.Context, tsDir string) error {
@@ -140,6 +211,20 @@ func checkNotDenoChart(ctx context.Context, tsDir string) error {
 	log.Default.Debug(ctx, "No package.json in %s, nothing to install", tsDir)
 
 	return nil
+}
+
+func dependenciesInstalled(ctx context.Context, installDir string) (bool, error) {
+	for _, marker := range []string{"node_modules", ".pnp.cjs"} {
+		if exists, err := fileExists(filepath.Join(installDir, marker)); err != nil {
+			return false, fmt.Errorf("check installed dependencies: %w", err)
+		} else if exists {
+			log.Default.Debug(ctx, "Dependencies in %s are already installed: %s exists", installDir, marker)
+
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // findLockFile returns the closest directory to tsDir, tsDir included, with a lock file and the
@@ -174,24 +259,62 @@ func findLockFile(tsDir string) (string, string, error) {
 	}
 }
 
-func installArgs(dir, managerName string) ([]string, error) {
+func installArgs(managerName string, yarnBerry bool) []string {
 	switch managerName {
 	case packageManagerNPM:
-		return []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}, nil
+		return []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}
+	case packageManagerPNPM, packageManagerBun:
+		return []string{"install", "--frozen-lockfile", "--ignore-scripts"}
 	case packageManagerYarn:
-		lockFile, err := os.ReadFile(filepath.Join(dir, "yarn.lock"))
-		if err != nil {
-			return nil, fmt.Errorf("read yarn.lock: %w", err)
+		if yarnBerry {
+			return []string{"install", "--immutable", "--mode=skip-build"}
 		}
 
-		if bytes.Contains(lockFile, []byte("__metadata:")) {
-			return []string{"install", "--immutable", "--mode=skip-build"}, nil
-		}
-
-		return []string{"install", "--frozen-lockfile", "--ignore-scripts"}, nil
+		return []string{"install", "--frozen-lockfile", "--ignore-scripts"}
 	default:
-		return []string{"install", "--frozen-lockfile", "--ignore-scripts"}, nil
+		panic(fmt.Sprintf("unexpected package manager %q", managerName))
 	}
+}
+
+func isYarnBerryLockFile(dir, managerName string) (bool, error) {
+	if managerName != packageManagerYarn {
+		return false, nil
+	}
+
+	lockFile, err := os.ReadFile(filepath.Join(dir, "yarn.lock"))
+	if err != nil {
+		return false, fmt.Errorf("read yarn.lock: %w", err)
+	}
+
+	return bytes.Contains(lockFile, []byte("__metadata:")), nil
+}
+
+// isolationArgs keep npm and pnpm, installing in ts/, from installing a workspace above instead.
+func isolationArgs(managerName string) []string {
+	switch managerName {
+	case packageManagerNPM:
+		return []string{"--workspaces=false"}
+	case packageManagerPNPM:
+		return []string{"--ignore-workspace"}
+	case packageManagerYarn, packageManagerBun:
+		return nil
+	default:
+		panic(fmt.Sprintf("unexpected package manager %q", managerName))
+	}
+}
+
+func resolvePath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("get absolute path of %s: %w", path, err)
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve symlinks in %s: %w", absPath, err)
+	}
+
+	return resolvedPath, nil
 }
 
 func runPackageManager(ctx context.Context, dir, managerPath, managerName string, args []string) error {
