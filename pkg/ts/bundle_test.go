@@ -45,28 +45,6 @@ func TestBuildBundle(t *testing.T) {
 		assert.Contains(t, string(bundle), `name: "subchart"`)
 	})
 
-	t.Run("fails on imports that Node.js does not resolve to built-in modules", func(t *testing.T) {
-		tsDir := filepath.Join(copyTestChart(t), "ts")
-		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import yaml from 'https://deno.land/std/yaml/mod.ts';\nimport cdn from '//cdn.example.com/x.js';\nimport fs from 'fs';\nimport { join } from 'node:path';\nconsole.log(yaml, cdn, fs, join);\n"), 0o644))
-
-		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), `"https://deno.land/std/yaml/mod.ts" imported by src/index.ts`)
-		assert.Contains(t, err.Error(), `"//cdn.example.com/x.js" imported by src/index.ts`)
-		assert.Contains(t, err.Error(), "install the package with the package manager")
-		assert.NotContains(t, err.Error(), `"fs"`)
-		assert.NotContains(t, err.Error(), `"node:path"`)
-	})
-
-	t.Run("does not fail on unsupported imports left out of the bundle as unused", func(t *testing.T) {
-		tsDir := filepath.Join(copyTestChart(t), "ts")
-		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "helpers.ts"), []byte("export function configMapName(): string {\n  return 'ts-chart';\n}\n\nexport function unused() {\n  return import('https://example.com/x.js');\n}\n"), 0o644))
-
-		bundle, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
-		require.NoError(t, err)
-		assert.NotContains(t, string(bundle), "https://example.com/x.js")
-	})
-
 	t.Run("keeps built-in modules external", func(t *testing.T) {
 		tsDir := filepath.Join(copyTestChart(t), "ts")
 		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import fs from 'fs';\nimport { readFile } from 'fs/promises';\nimport { join } from 'node:path';\nconst tty = require('tty');\nconsole.log(fs, readFile, join, tty);\n"), 0o644))
@@ -76,46 +54,15 @@ func TestBuildBundle(t *testing.T) {
 		assert.Contains(t, string(bundle), `from "fs/promises"`)
 	})
 
-	for name, test := range map[string]struct {
-		files    map[string]string
-		wantHint func(tsDir, rootDir string) string
-	}{
-		"without a lock file": {
-			wantHint: func(tsDir, _ string) string {
-				return `run "npm install" in ` + tsDir + ` and commit the lock file`
-			},
-		},
-		"with the lock file in ts": {
-			files: map[string]string{"chart/ts/pnpm-lock.yaml": ""},
-			wantHint: func(tsDir, _ string) string {
-				return `run "pnpm install --frozen-lockfile --ignore-scripts --ignore-workspace" in ` + tsDir
-			},
-		},
-		"with the lock file in an ancestor": {
-			files: map[string]string{"package-lock.json": "{}", "node_modules/": ""},
-			wantHint: func(tsDir, rootDir string) string {
-				return "the closest lock file is in " + rootDir + ", so make sure " + tsDir + ` is in the workspace there and run "npm install" in ` + rootDir
-			},
-		},
-	} {
-		t.Run("tells how to install the dependencies on an unresolvable import "+name, func(t *testing.T) {
-			rootDir := t.TempDir()
-			require.NoError(t, os.CopyFS(filepath.Join(rootDir, "chart"), os.DirFS(filepath.Join("testdata", "chart"))))
-			writeFiles(t, rootDir, test.files)
+	t.Run("tells to install the dependencies on an unresolvable import", func(t *testing.T) {
+		tsDir := filepath.Join(copyTestChart(t), "ts")
+		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import 'missing-package';\n"), 0o644))
 
-			// The chart is reached through a symlink, while the messages name where it really is.
-			linkDir := filepath.Join(t.TempDir(), "link")
-			require.NoError(t, os.Symlink(filepath.Join(rootDir, "chart"), linkDir))
-
-			tsDir := filepath.Join(linkDir, "ts")
-			require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import 'missing-package';\n"), 0o644))
-
-			_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), `Could not resolve "missing-package"`)
-			assert.Contains(t, err.Error(), "\nIf a package is missing, install the dependencies: "+test.wantHint(resolvePath(t, filepath.Join(rootDir, "chart", "ts")), resolvePath(t, rootDir)))
-		})
-	}
+		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `Could not resolve "missing-package"`)
+		assert.True(t, strings.HasSuffix(err.Error(), "\nInstall the dependencies of "+tsDir+" with its package manager and make sure every imported package is in package.json."))
+	})
 
 	t.Run("does not suggest installing dependencies for other errors", func(t *testing.T) {
 		tsDir := filepath.Join(copyTestChart(t), "ts")
@@ -123,7 +70,7 @@ func TestBuildBundle(t *testing.T) {
 
 		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
 		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "install the dependencies")
+		assert.NotContains(t, err.Error(), "Install the dependencies")
 	})
 }
 

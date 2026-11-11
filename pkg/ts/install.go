@@ -177,35 +177,6 @@ func checkYarnVersion(ctx context.Context, installDir, yarnPath string) error {
 	return nil
 }
 
-// installHint tells how to install the dependencies of tsDir, for the errors of bundling.
-func installHint(tsDir string) (string, error) {
-	tsDir, err := resolvePath(tsDir)
-	if err != nil {
-		return "", err
-	}
-
-	installDir, managerName, err := findLockFile(tsDir)
-	if err != nil {
-		return "", fmt.Errorf("find lock file of %s: %w", tsDir, err)
-	}
-
-	switch installDir {
-	case "":
-		return fmt.Sprintf("run %q in %s and commit the lock file", "npm install", tsDir), nil
-	case tsDir:
-		yarnBerry, err := isYarnBerryLockFile(installDir, managerName)
-		if err != nil {
-			return "", err
-		}
-
-		args := append(installArgs(managerName, yarnBerry), isolationArgs(managerName)...)
-
-		return fmt.Sprintf("run %q in %s", managerName+" "+strings.Join(args, " "), tsDir), nil
-	default:
-		return fmt.Sprintf("the closest lock file is in %s, so make sure %s is in the workspace there and run %q in %s", installDir, tsDir, managerName+" install", installDir), nil
-	}
-}
-
 func runPackageManager(ctx context.Context, dir, managerPath, managerName string, args []string) error {
 	command := managerName + " " + strings.Join(args, " ")
 

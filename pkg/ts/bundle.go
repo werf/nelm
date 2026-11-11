@@ -2,13 +2,10 @@ package ts
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
@@ -73,64 +70,6 @@ func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path s
 	return nil
 }
 
-// buildBundle bundles the chart with the esbuild options agreed on with the CLI of
-// @nelm/chart-ts-sdk, which bundles the same way for local development.
-func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) {
-	result := api.Build(api.BuildOptions{
-		AbsWorkingDir: tsDir,
-		// CommonJS dependencies need require for Node.js builtins and __dirname/__filename, which an ES
-		// module lacks. Declaring the latter in the banner would clash with ES modules declaring them.
-		Banner: map[string]string{
-			"js": "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);",
-		},
-		Bundle: true,
-		Define: map[string]string{
-			"__dirname":  "import.meta.dirname",
-			"__filename": "import.meta.filename",
-		},
-		Engines:     []api.Engine{{Name: api.EngineNode, Version: "26"}},
-		EntryPoints: []string{entryPoint},
-		Format:      api.FormatESModule,
-		// Does not change the bundle, which must stay the same as the one the SDK builds.
-		Metafile: true,
-		Platform: api.PlatformNode,
-	})
-
-	for _, warning := range api.FormatMessages(result.Warnings, api.FormatMessagesOptions{Kind: api.WarningMessage}) {
-		log.Default.Warn(ctx, "%s", strings.TrimSpace(warning))
-	}
-
-	if len(result.Errors) > 0 {
-		err := errors.New(strings.TrimSpace(strings.Join(api.FormatMessages(result.Errors, api.FormatMessagesOptions{Kind: api.ErrorMessage}), "")))
-
-		unresolved := lo.ContainsBy(result.Errors, func(message api.Message) bool {
-			return strings.HasPrefix(message.Text, "Could not resolve")
-		})
-		if !unresolved {
-			return nil, err
-		}
-
-		hint, hintErr := installHint(tsDir)
-		if hintErr != nil {
-			log.Default.Debug(ctx, "Cannot tell how to install the dependencies of %s: %s", tsDir, hintErr)
-
-			return nil, err
-		}
-
-		return nil, fmt.Errorf("%w\nIf a package is missing, install the dependencies: %s", err, hint)
-	}
-
-	if err := checkExternalImports(result.Metafile); err != nil {
-		return nil, err
-	}
-
-	if len(result.OutputFiles) != 1 {
-		return nil, fmt.Errorf("expected 1 output file from esbuild, got %d", len(result.OutputFiles))
-	}
-
-	return result.OutputFiles[0].Contents, nil
-}
-
 func getEntrypointAndBundle(files []*chartcommon.File) (string, *chartcommon.File) {
 	entrypoint := findEntrypointInFiles(files)
 	if entrypoint == "" {
@@ -168,55 +107,51 @@ func hasTSFiles(chart helmchart.Accessor) bool {
 	return false
 }
 
-// checkExternalImports fails on the imports the bundle leaves to Node.js other than those of
-// built-in modules, such as URL imports, which Node.js does not load. Bare names, which esbuild
-// leaves out for built-in modules and for requires in try/catch it cannot resolve, are let through.
-func checkExternalImports(metafile string) error {
-	type metaImport struct {
-		External bool   `json:"external"`
-		Path     string `json:"path"`
-	}
-
-	var meta struct {
-		Inputs map[string]struct {
-			Imports []metaImport `json:"imports"`
-		} `json:"inputs"`
-		Outputs map[string]struct {
-			Imports []metaImport `json:"imports"`
-		} `json:"outputs"`
-	}
-
-	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
-		return fmt.Errorf("decode esbuild metafile: %w", err)
-	}
-
-	var unsupported []string
-
-	for _, output := range meta.Outputs {
-		for _, imported := range output.Imports {
-			bare := !strings.Contains(imported.Path, ":") && !strings.HasPrefix(imported.Path, "/")
-			if !imported.External || bare || strings.HasPrefix(imported.Path, "node:") || slices.Contains(unsupported, imported.Path) {
-				continue
-			}
-
-			unsupported = append(unsupported, imported.Path)
-		}
-	}
-
-	if len(unsupported) == 0 {
-		return nil
-	}
-
-	// The outputs do not tell where the imports come from, which the inputs do.
-	descriptions := lo.Map(unsupported, func(path string, _ int) string {
-		importers := lo.Filter(slices.Sorted(maps.Keys(meta.Inputs)), func(input string, _ int) bool {
-			return lo.ContainsBy(meta.Inputs[input].Imports, func(imported metaImport) bool { return imported.Path == path })
-		})
-
-		return fmt.Sprintf("%q imported by %s", path, strings.Join(importers, ", "))
+// buildBundle bundles the chart with the esbuild options agreed on with the CLI of
+// @nelm/chart-ts-sdk, which bundles the same way for local development.
+func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) {
+	result := api.Build(api.BuildOptions{
+		AbsWorkingDir: tsDir,
+		// CommonJS dependencies need require for Node.js builtins and __dirname/__filename, which an ES
+		// module lacks. Declaring the latter in the banner would clash with ES modules declaring them.
+		Banner: map[string]string{
+			"js": "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);",
+		},
+		Bundle: true,
+		Define: map[string]string{
+			"__dirname":  "import.meta.dirname",
+			"__filename": "import.meta.filename",
+		},
+		Engines:     []api.Engine{{Name: api.EngineNode, Version: "26"}},
+		EntryPoints: []string{entryPoint},
+		Format:      api.FormatESModule,
+		Platform:    api.PlatformNode,
 	})
 
-	return fmt.Errorf("unsupported imports: %s: Node.js loads only built-in modules at run time, so install the package with the package manager and import it by its name", strings.Join(descriptions, "; "))
+	for _, warning := range api.FormatMessages(result.Warnings, api.FormatMessagesOptions{Kind: api.WarningMessage}) {
+		log.Default.Warn(ctx, "%s", strings.TrimSpace(warning))
+	}
+
+	if len(result.Errors) > 0 {
+		err := errors.New(strings.TrimSpace(strings.Join(api.FormatMessages(result.Errors, api.FormatMessagesOptions{Kind: api.ErrorMessage}), "")))
+
+		unresolved := lo.ContainsBy(result.Errors, func(message api.Message) bool {
+			return strings.HasPrefix(message.Text, "Could not resolve")
+		})
+		if !unresolved {
+			return nil, err
+		}
+
+		hint := fmt.Sprintf("Install the dependencies of %s with its package manager and make sure every imported package is in package.json.", tsDir)
+
+		return nil, fmt.Errorf("%w\n%s", err, hint)
+	}
+
+	if len(result.OutputFiles) != 1 {
+		return nil, fmt.Errorf("expected 1 output file from esbuild, got %d", len(result.OutputFiles))
+	}
+
+	return result.OutputFiles[0].Contents, nil
 }
 
 func findEntrypointInFiles(files []*chartcommon.File) string {
