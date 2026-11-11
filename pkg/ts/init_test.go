@@ -414,6 +414,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "remove it to initialize the chart again")
 		assert.Contains(t, err.Error(), "npm install")
+		assert.NotContains(t, err.Error(), "chart ts init")
 	})
 }
 

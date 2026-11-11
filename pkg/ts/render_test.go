@@ -271,6 +271,7 @@ func TestRunBundleRejectsWildcardInPaths(t *testing.T) {
 	err := ts.RunBundle(context.Background(), nodePath, renderDir, []byte(""))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `contains "*"`)
+	assert.Contains(t, err.Error(), `use a temporary directory and chart names without "*"`)
 	assert.NoFileExists(t, nodePath+".args", "Node.js must not be run")
 }
 

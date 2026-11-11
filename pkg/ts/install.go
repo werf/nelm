@@ -36,7 +36,7 @@ var lockFiles = []struct {
 	{name: "bun.lockb", packageManager: packageManagerBun},
 }
 
-// InstallDependencies installs the dependencies of the TypeScript chart in chartPath, as chart ts init
+// InstallDependencies installs the dependencies of the TypeScript chart in chartPath, as initializing a chart
 // does: unlike before bundling, a missing lock file is created rather than being an error.
 func InstallDependencies(ctx context.Context, chartPath string) error {
 	return ensureDependencies(ctx, filepath.Join(chartPath, common.ChartTSSourceDir), true)
@@ -67,7 +67,7 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return fmt.Errorf("find lock file of %s: %w", tsDir, err)
 	}
 
-	// The workspace of the lock file and its lock file are up to the user, so chart ts init only tells
+	// The workspace of the lock file and its lock file are up to the user, so initializing a chart only tells
 	// how to install.
 	if createLockFile && installDir != "" && installDir != tsDir {
 		log.Default.Warn(ctx, "Dependencies of %s are not installed: the closest lock file is in %s. Set up the workspace and/or install the dependencies manually.", tsDir, installDir)
@@ -116,7 +116,7 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 // runInstall runs the package manager, after checking that a yarn in PATH reads a yarn.lock of
 // its format, which yarn classic would otherwise rewrite while running scripts of packages.
 func runInstall(ctx context.Context, installDir, managerName string, args []string, createLockFile bool) error {
-	// In chart ts init the chart files are already created, so the user only has to finish the install.
+	// When a chart is initialized, the chart files are already created, so the user only has to finish the install.
 	nextStep := func(err error) error {
 		if err == nil || !createLockFile {
 			return err

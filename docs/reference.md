@@ -2863,7 +2863,7 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -2951,7 +2951,7 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
@@ -2959,11 +2959,11 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   chart repository url where to locate the requested chart
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3634,7 +3634,7 @@ nelm chart dependency download CHART [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -3706,15 +3706,15 @@ nelm chart dependency download CHART [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3776,7 +3776,7 @@ nelm chart dependency update CHART [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -3848,15 +3848,15 @@ nelm chart dependency update CHART [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3909,7 +3909,7 @@ nelm chart repo add [NAME] [URL] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -3985,15 +3985,15 @@ nelm chart repo add [NAME] [URL] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -4030,7 +4030,7 @@ nelm chart repo remove [REPO1 [REPO2 ...]] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -4082,15 +4082,15 @@ nelm chart repo remove [REPO1 [REPO2 ...]] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -4119,7 +4119,7 @@ nelm chart repo update [REPO1 [REPO2 ...]] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -4171,15 +4171,15 @@ nelm chart repo update [REPO1 [REPO2 ...]] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -4220,7 +4220,7 @@ nelm chart repo login [host] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -4292,15 +4292,15 @@ nelm chart repo login [host] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -4333,7 +4333,7 @@ nelm chart repo logout [host] [flags]
 
   use colored output \(never, auto, always\)
 
-- `--content-cache` (default: `"~/Library/Caches/helm/content"`)
+- `--content-cache` (default: `"~/.cache/helm/content"`)
 
   path to the directory containing cached content \(e\.g\. charts\)
 
@@ -4385,15 +4385,15 @@ nelm chart repo logout [host] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"~/Library/Preferences/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"~/Library/Caches/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the directory containing cached repository indexes
 
-- `--repository-config` (default: `"~/Library/Preferences/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 

@@ -150,7 +150,7 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 
 	for _, path := range []string{inputPath, outputPath} {
 		if strings.Contains(path, "*") {
-			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a --temp-dir and chart names without \"*\"", path)
+			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a temporary directory and chart names without \"*\"", path)
 		}
 	}
 

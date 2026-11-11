@@ -59,7 +59,7 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 }
 
 func newNodeNotFoundError(found, stderr string) error {
-	message := fmt.Sprintf("Node.js >= %d is required to render TypeScript charts, put it in PATH or pass --node-binary-path: %s", minNodeMajorVersion, found)
+	message := fmt.Sprintf("Node.js >= %d is required to render TypeScript charts, put it in PATH or set the path to the Node.js binary: %s", minNodeMajorVersion, found)
 
 	if stderr = strings.TrimSpace(stderr); stderr != "" {
 		message += ": " + stderr

@@ -50,7 +50,7 @@ func EnsureGitignore(chartPath string) error {
 func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
 	if _, err := os.Stat(tsDir); err == nil {
-		return fmt.Errorf("init chart structure: typescript directory already exists: %s: remove it to initialize the chart again, or, if a previous chart ts init failed to install the dependencies, install them by running the install command of the package manager there, such as \"npm install\"", tsDir)
+		return fmt.Errorf("init chart structure: typescript directory already exists: %s: remove it to initialize the chart again, or, if installing the dependencies failed when it was initialized, install them by running the install command of the package manager there, such as \"npm install\"", tsDir)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}

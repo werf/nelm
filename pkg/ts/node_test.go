@@ -70,7 +70,7 @@ func TestFindNode(t *testing.T) {
 	}{
 		"fails with Node.js 24": {
 			body:    probeOutput("/usr/bin/node", "24.13.0"),
-			wantErr: []string{"Node.js >= 26 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
+			wantErr: []string{"Node.js >= 26 is required to render TypeScript charts, put it in PATH or set the path to the Node.js binary: found Node.js 24.13.0 at /usr/bin/node"},
 		},
 		"fails with Node.js 25": {
 			body:    probeOutput("/usr/bin/node", "25.9.0"),
@@ -123,7 +123,7 @@ func TestFindNode(t *testing.T) {
 
 		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Node.js >= 26 is required to render TypeScript charts, put it in PATH or pass --node-binary-path: no node in PATH")
+		assert.Contains(t, err.Error(), "Node.js >= 26 is required to render TypeScript charts, put it in PATH or set the path to the Node.js binary: no node in PATH")
 	})
 
 	t.Run("fails with a missing node binary path", func(t *testing.T) {
