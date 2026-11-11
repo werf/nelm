@@ -323,6 +323,10 @@ nelm release install [options...] [-n namespace] [-r release] [chart-dir|chart-r
 
   Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
 
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_NODE\_BINARY\_PATH
+
 
 **Progress options:**
 
@@ -1044,6 +1048,10 @@ nelm release plan install [options...] [-n namespace] [-r release] [chart-dir|ch
 - `--ignore-bundle-js` (default: `false`)
 
   Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -2234,6 +2242,10 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
 
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_LINT\_NODE\_BINARY\_PATH
+
 
 **Progress options:**
 
@@ -2600,6 +2612,10 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 - `--ignore-bundle-js` (default: `false`)
 
   Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_NODE\_BINARY\_PATH
 
 
 **Chart repository options:**

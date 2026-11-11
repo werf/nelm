@@ -98,18 +98,6 @@ type stubRun struct {
 	dir     string
 }
 
-// stubPath makes PATH hold nothing but a new directory and returns it.
-// putTestNodeInPath makes the Node.js of the tests the only node in PATH.
-func putTestNodeInPath(t *testing.T) {
-	t.Helper()
-
-	nodePath := requireTestNode(t)
-
-	binDir := t.TempDir()
-	require.NoError(t, os.Symlink(nodePath, filepath.Join(binDir, "node")))
-	t.Setenv("PATH", binDir)
-}
-
 // runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
 // logged. The fake Node.js is a single process, so stopping it stops writing.
 func runOutput(t *testing.T, catPath, output string) []string {
@@ -143,6 +131,7 @@ func runOutput(t *testing.T, catPath, output string) []string {
 	})
 }
 
+// stubPath makes PATH hold nothing but a new directory and returns it.
 func stubPath(t *testing.T) string {
 	t.Helper()
 

@@ -24,7 +24,7 @@ func TestFindNode(t *testing.T) {
 		t.Setenv("NELM_TEST_CANARY", "inherited")
 		writeStub(t, binDir, "node", probeOutput("/opt/node versions/26.13.0/bin/node", "26.13.0"))
 
-		execPath, err := ts.FindNode(context.Background())
+		execPath, err := ts.FindNode(context.Background(), "")
 		require.NoError(t, err)
 		assert.Equal(t, "/opt/node versions/26.13.0/bin/node", execPath)
 
@@ -37,16 +37,29 @@ func TestFindNode(t *testing.T) {
 		binDir := stubPath(t)
 		writeStub(t, binDir, "node", "printf 'hello from preload\\n/not/node 1.0.0\\n'\n"+probeOutput("/opt/node/bin/node", "26.13.0")+"printf 'bye from preload\\n'\n")
 
-		execPath, err := ts.FindNode(context.Background())
+		execPath, err := ts.FindNode(context.Background(), "")
 		require.NoError(t, err)
 		assert.Equal(t, "/opt/node/bin/node", execPath)
+	})
+
+	t.Run("prefers the node binary path over node in PATH", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "node", probeOutput("/usr/bin/node", "26.13.0"))
+
+		explicitDir := t.TempDir()
+		writeStub(t, explicitDir, "my-node", probeOutput("/opt/node/bin/node", "27.1.0"))
+
+		execPath, err := ts.FindNode(context.Background(), filepath.Join(explicitDir, "my-node"))
+		require.NoError(t, err)
+		assert.Equal(t, "/opt/node/bin/node", execPath)
+		requireStubNotRun(t, binDir, "node")
 	})
 
 	t.Run("accepts the first Node.js 26", func(t *testing.T) {
 		binDir := stubPath(t)
 		writeStub(t, binDir, "node", probeOutput("/usr/bin/node", "26.0.0"))
 
-		execPath, err := ts.FindNode(context.Background())
+		execPath, err := ts.FindNode(context.Background(), "")
 		require.NoError(t, err)
 		assert.Equal(t, "/usr/bin/node", execPath)
 	})
@@ -57,7 +70,7 @@ func TestFindNode(t *testing.T) {
 	}{
 		"fails with Node.js 24": {
 			body:    probeOutput("/usr/bin/node", "24.13.0"),
-			wantErr: []string{"Node.js >= 26 is required in PATH to render TypeScript charts: found Node.js 24.13.0 at /usr/bin/node"},
+			wantErr: []string{"Node.js >= 26 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
 		},
 		"fails with Node.js 25": {
 			body:    probeOutput("/usr/bin/node", "25.9.0"),
@@ -87,7 +100,7 @@ func TestFindNode(t *testing.T) {
 			binDir := stubPath(t)
 			writeStub(t, binDir, "node", test.body)
 
-			_, err := ts.FindNode(context.Background())
+			_, err := ts.FindNode(context.Background(), "")
 			require.Error(t, err)
 
 			for _, want := range test.wantErr {
@@ -100,7 +113,7 @@ func TestFindNode(t *testing.T) {
 		binDir := stubPath(t)
 		writeStub(t, binDir, "node", "exit 1\n")
 
-		_, err := ts.FindNode(context.Background())
+		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), "Install the")
 	})
@@ -108,15 +121,24 @@ func TestFindNode(t *testing.T) {
 	t.Run("fails without node in PATH", func(t *testing.T) {
 		stubPath(t)
 
-		_, err := ts.FindNode(context.Background())
+		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Node.js >= 26 is required in PATH to render TypeScript charts: no node in PATH")
+		assert.Contains(t, err.Error(), "Node.js >= 26 is required to render TypeScript charts, put it in PATH or pass --node-binary-path: no node in PATH")
+	})
+
+	t.Run("fails with a missing node binary path", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "node")
+
+		_, err := ts.FindNode(context.Background(), missing)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "run "+missing)
+		assert.NoFileExists(t, missing)
 	})
 
 	t.Run("finds a real Node.js", func(t *testing.T) {
-		putTestNodeInPath(t)
+		nodePath := requireTestNode(t)
 
-		execPath, err := ts.FindNode(context.Background())
+		execPath, err := ts.FindNode(context.Background(), nodePath)
 		require.NoError(t, err)
 
 		info, err := os.Stat(execPath)
