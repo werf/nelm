@@ -222,7 +222,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"typecheck": "tsc",
 		}, packageJSON["scripts"])
 		assert.Equal(t, map[string]any{"@nelm/chart-ts-sdk": "^0.2.0"}, packageJSON["dependencies"])
-		assert.Contains(t, packageJSON["devDependencies"], "typescript")
+		assert.Equal(t, map[string]any{"typescript": "~6.0.3"}, packageJSON["devDependencies"])
 	})
 
 	t.Run("names the package after the chart as npm allows", func(t *testing.T) {

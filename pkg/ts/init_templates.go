@@ -202,7 +202,7 @@ Values:
     "@nelm/chart-ts-sdk": "^0.2.0"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "typescript": "~6.0.3"
   }
 }
 `
