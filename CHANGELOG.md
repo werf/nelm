@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.4.0](https://github.com/werf/nelm/compare/v2.3.0...v2.4.0) (2026-11-12)
+
+
+### Features
+
+* **chart:** copy charts with their images between registries and archives ([#810](https://github.com/werf/nelm/issues/810)) ([47a2d34](https://github.com/werf/nelm/commit/47a2d34e7842ed28928c3584da4de155ff9dfd8b))
+* **chart:** keep publish-time inputs in .werf-data and deploy them like the original flags ([#809](https://github.com/werf/nelm/issues/809)) ([8b462a9](https://github.com/werf/nelm/commit/8b462a9e2344b77f53511f2a713d071611a3efd4))
+* **chart:** pin OCI pulls to one digest, add chart upload and recorded release defaults ([#811](https://github.com/werf/nelm/issues/811)) ([50cd8d8](https://github.com/werf/nelm/commit/50cd8d8bd0057aa59a8fd16f7e99e98a8857d852))
+* enable TypeScript charts by default ([#826](https://github.com/werf/nelm/issues/826)) ([d5dafa3](https://github.com/werf/nelm/commit/d5dafa36d8f227c49503f81f687d35cc2b41322b))
+* publish Nelm container images ([#825](https://github.com/werf/nelm/issues/825)) ([1b75334](https://github.com/werf/nelm/commit/1b75334450a19f31a0c6ba3732022eb67a6c0091))
+* run TypeScript charts with Node.js instead of Deno ([#816](https://github.com/werf/nelm/issues/816)) ([2dfe6d3](https://github.com/werf/nelm/commit/2dfe6d3186b75d1e579442170e59e26dda01cd03))
+* warn about secret values that lost their type in the legacy format ([#796](https://github.com/werf/nelm/issues/796)) ([9a28575](https://github.com/werf/nelm/commit/9a28575ad2537e12795dc843a3c85abb9db05be8))
+
+
+### Bug Fixes
+
+* apply .werf-data of a published dependency that is out of the version range of its alias ([#823](https://github.com/werf/nelm/issues/823)) ([7866027](https://github.com/werf/nelm/commit/78660276c3de138bb3c40db670ae8a24dd3d8921))
+* apply export-values from chart values regardless of dependency order ([#804](https://github.com/werf/nelm/issues/804)) ([3c2bfb3](https://github.com/werf/nelm/commit/3c2bfb3085e9147f17c26b202f0569c1c773d846))
+* apply export-values from user values to dependency out of version range ([#791](https://github.com/werf/nelm/issues/791)) ([83c4612](https://github.com/werf/nelm/commit/83c4612a6ecad2fae7510e7287115451492ff05f))
+* apply secret-values.yaml of v3 and undeclared subcharts ([#795](https://github.com/werf/nelm/issues/795)) ([1817f8b](https://github.com/werf/nelm/commit/1817f8b46aea05054dad4ed7ee09561bb3ae22f3))
+* delete resources of the last deployed revision after a pending or failed revision ([#792](https://github.com/werf/nelm/issues/792)) ([98d48db](https://github.com/werf/nelm/commit/98d48dbbadbb4d93a34fc4762a9675b15f8e3665))
+* export root chart globals from export-values of nested charts ([#794](https://github.com/werf/nelm/issues/794)) ([63f02a0](https://github.com/werf/nelm/commit/63f02a069573b9ebdf860d4dfa723aaff3a79e78))
+* **helm:** confirm Unknown resources with a live GET in WaitForDelete ([#793](https://github.com/werf/nelm/issues/793)) ([cfdde29](https://github.com/werf/nelm/commit/cfdde29984fb8e52ccb495818cc023c107049373))
+* lookalike keys such as `werf-io/weight` no longer act as `werf.io/*` and `helm.sh/*` annotations ([#799](https://github.com/werf/nelm/issues/799)) ([ae91bc5](https://github.com/werf/nelm/commit/ae91bc5052a5b17ff653e5b0e31fe7535b34ab44))
+* mark revisions left pending by an interrupted deploy as failed ([#798](https://github.com/werf/nelm/issues/798)) ([30c6dfb](https://github.com/werf/nelm/commit/30c6dfb41b96014586c0aa8963cb38cd9c55aabf))
+* release with numeric --set values never skipped as up to date ([#786](https://github.com/werf/nelm/issues/786)) ([aae38de](https://github.com/werf/nelm/commit/aae38de59683a7fe6c11dbccf681567591b68e61))
+* restore WERF_SECRET_KEY after actions instead of leaking it into the process ([#788](https://github.com/werf/nelm/issues/788)) ([77de34a](https://github.com/werf/nelm/commit/77de34a84df6260b65629040d695150ad5b97d6b))
+* route values and dependency messages of the Helm fork through the Nelm logger ([#805](https://github.com/werf/nelm/issues/805)) ([9f1200c](https://github.com/werf/nelm/commit/9f1200cfc66974b290cae915ed217b18a1e54bf8))
+* skip no-op deploy of a chart with an internal state=ready deploy-dependency ([#789](https://github.com/werf/nelm/issues/789)) ([df6a7e0](https://github.com/werf/nelm/commit/df6a7e09dca6d95a85e6117992d79cccd8511d7f))
+* v3 charts import --values and --set* and warn about ignored export-values ([#803](https://github.com/werf/nelm/issues/803)) ([1b35754](https://github.com/werf/nelm/commit/1b357544f53f0fdcd80bebabc162af9609bc2767))
+* warn about export-values and import-values paths set in no values ([#806](https://github.com/werf/nelm/issues/806)) ([ca0491f](https://github.com/werf/nelm/commit/ca0491f1cef6db8d6cc67f27e41933f47bf74428))
+* warn on chart pack about skipped export-values and import-values ([#821](https://github.com/werf/nelm/issues/821)) ([e2464b4](https://github.com/werf/nelm/commit/e2464b4428241f1b8b1fd54afc7c254f7f4f8547))
+* warn when a resource being deployed is already being deleted ([#790](https://github.com/werf/nelm/issues/790)) ([b4c9403](https://github.com/werf/nelm/commit/b4c9403b50fcc7ef6282a6025f85c2264c1290ed))
+
 ## [2.3.0](https://github.com/werf/nelm/compare/v2.2.1...v2.3.0) (2026-11-03)
 
 
