@@ -1,0 +1,10 @@
+{{ $_ := set . "App" "nelm" }}
+{{ $_ := set . "Distros" (list "alpine" "ubuntu" "ubuntu-node") }}
+{{ $_ := set . "DefaultGroupName" "2" }}
+{{ $_ := set . "DefaultChannelName" "stable" }}
+{{ $_ := set . "DefaultDistroName" "alpine" }}
+{{ $_ := set . "DefaultNodeDistroName" "ubuntu" }}
+{{/* The first version that renders TypeScript charts with Node.js: -node images of older versions are skipped. */}}
+{{ $_ := set . "NodeMinVersion" "2.4.0" }}
+
+{{ include "templates/base_config.tmpl" . }}

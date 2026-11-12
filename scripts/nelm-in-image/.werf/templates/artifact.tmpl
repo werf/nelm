@@ -1,0 +1,76 @@
+{{- define "artifact" }}
+  {{- $image_name := index . 0 }}
+  {{- $group_name := index . 1 }}
+  {{- $distro_name := index . 2 }}
+  {{- $ctx := index . 3 }}
+  {{- $source_image_name := (printf "trdl-%s-%s" $ctx.App $ctx.ChannelVersion) }}
+  {{- $base_image_name := (printf "%s-%s" $ctx.App $distro_name) }}
+
+---
+image: "{{ $image_name }}"
+dockerfile: ./dockerfile/artifact.Dockerfile
+dependencies:
+  - from: "{{ $source_image_name }}"
+    imports:
+      - type: ImageName
+        targetBuildArg: source_image
+  - from: "{{ $base_image_name }}"
+    imports:
+      - type: ImageName
+        targetBuildArg: base_image
+{{- end }}
+
+{{ define "latest" }}
+{{- $image_name := "latest" }}
+{{- include "artifact" (list $image_name $.DefaultGroupName $.DefaultDistroName $) }}
+{{- end }}
+
+{{- define "<group>" }}
+{{- $image_name := $.GroupName }}
+{{- include "artifact" (list $image_name $.GroupName $.DefaultDistroName $) }}
+{{- end }}
+
+{{ define "<group>-<channel>" }}
+{{- $image_name := (printf "%s-%s" $.GroupName $.ChannelName) }}
+{{- include "artifact" (list $image_name $.GroupName $.DefaultDistroName $) }}
+{{- end}}
+
+{{- define "<group>-<distro>" }}
+{{- $image_name := (printf "%s-%s" $.GroupName $.DistroName) }}
+{{- include "artifact" (list $image_name $.GroupName $.DistroName $) }}
+{{- end }}
+
+{{ define "<group>-<channel>-<distro>" }}
+{{- $image_name := (printf "%s-%s-%s" $.GroupName $.ChannelName $.DistroName) }}
+{{- include "artifact" (list $image_name $.GroupName $.DistroName $) }}
+{{- end }}
+
+{{ define "<version>" }}
+{{- $image_name := $.normalizedChannelVersion }}
+{{- include "artifact" (list $image_name $.GroupName $.DefaultDistroName $) }}
+{{- end }}
+
+{{ define "<version>-<distro>" }}
+{{- $image_name := (printf "%s-%s" $.normalizedChannelVersion $.DistroName) }}
+{{- include "artifact" (list $image_name $.GroupName $.DistroName $) }}
+{{- end }}
+
+{{ define "latest-node" }}
+{{- $image_name := "latest-node" }}
+{{- include "artifact" (list $image_name $.DefaultGroupName (printf "%s-node" $.DefaultNodeDistroName) $) }}
+{{- end }}
+
+{{- define "<group>-node" }}
+{{- $image_name := (printf "%s-node" $.GroupName) }}
+{{- include "artifact" (list $image_name $.GroupName (printf "%s-node" $.DefaultNodeDistroName) $) }}
+{{- end }}
+
+{{ define "<group>-<channel>-node" }}
+{{- $image_name := (printf "%s-%s-node" $.GroupName $.ChannelName) }}
+{{- include "artifact" (list $image_name $.GroupName (printf "%s-node" $.DefaultNodeDistroName) $) }}
+{{- end }}
+
+{{ define "<version>-node" }}
+{{- $image_name := (printf "%s-node" $.normalizedChannelVersion) }}
+{{- include "artifact" (list $image_name $.GroupName (printf "%s-node" $.DefaultNodeDistroName) $) }}
+{{- end }}
