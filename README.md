@@ -111,24 +111,7 @@ Nelm is also published as container images to `registry.werf.io/werf/nelm` and `
 docker run --rm -v "$PWD:/home/nelm/chart" -w /home/nelm/chart registry.werf.io/werf/nelm:2 nelm chart render
 ```
 
-The images follow the naming convention:
-
-- `registry.werf.io/werf/nelm:<group>` (e.g., `registry.werf.io/werf/nelm:2`);
-- `registry.werf.io/werf/nelm:<group>-<channel>` (e.g., `registry.werf.io/werf/nelm:2-stable`);
-- `registry.werf.io/werf/nelm:<group>-<channel>-<os>` (e.g., `registry.werf.io/werf/nelm:2-stable-alpine`);
-- `registry.werf.io/werf/nelm:<group>-<channel>-<os>-node` (e.g., `registry.werf.io/werf/nelm:2-stable-ubuntu-node`);
-- `registry.werf.io/werf/nelm:<version>` (e.g., `registry.werf.io/werf/nelm:2.4.0`);
-- `registry.werf.io/werf/nelm:<version>-<os>` (e.g., `registry.werf.io/werf/nelm:2.4.0-alpine`);
-- `registry.werf.io/werf/nelm:<version>-<os>-node` (e.g., `registry.werf.io/werf/nelm:2.4.0-ubuntu-node`).
-
-Where:
-
-- `<group>`: version group; use `2`;
-- `<channel>`: release channel, such as `alpha`, `beta`, `ea`, `stable` (default), or `rock-solid`;
-- `<os>`: operating system, `alpine` (default) or `ubuntu`;
-- `<version>`: version (e.g., `2.4.0`). If the release version includes `+fix` (e.g., `2.4.0+fix1`), it will be converted to `2.4.0.fix1` version.
-
-Images with the `-node` suffix include Node.js for rendering TypeScript charts. `<group>-node`, `<group>-<channel>-node`, `<version>-node` and `latest-node` are short tags for the `ubuntu-node` image.
+Tags: `<group>[-<channel>][-<os>]` and `<version>[-<os>]` (e.g., `2`, `2-stable`, `2-stable-ubuntu`, `2.4.0`), where `<os>` is `alpine` (default) or `ubuntu`. Tags with the `-node` suffix (e.g., `2-node`, `2-stable-node`, `latest-node`) point to the Ubuntu image with Node.js for rendering TypeScript charts.
 
 ## Quickstart
 
