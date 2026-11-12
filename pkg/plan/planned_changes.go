@@ -78,6 +78,15 @@ func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) 
 	return uDiff, nil
 }
 
+func (c *ResourceChange) HasSignificantChanges(opts common.ResourceDiffOptions) (bool, error) {
+	uDiff, err := c.UDiff(opts)
+	if err != nil {
+		return false, fmt.Errorf("calculate uDiff: %w", err)
+	}
+
+	return uDiff != HiddenInsignificantChanges && uDiff != HiddenVerboseCRDChanges, nil
+}
+
 // Calculate planned changes for informational purposes. Doesn't need the full plan, just having
 // Installable/DeletableResourceInfos is enough. Returns the structured result and shouldn't decide
 // on how to present this data.
