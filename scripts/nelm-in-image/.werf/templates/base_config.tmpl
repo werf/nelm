@@ -17,9 +17,17 @@ cleanup:
 {{- $uniqueChannelVersions := list -}}
 {{- $uniqueArtifactVersions := list -}}
 
+{{- $nodeConstraint := printf ">=%s" $.NodeMinVersion -}}
+{{- $anyNodeVersion := false -}}
+
 {{/* set up default channel version  */}}
 {{- $trdlChannelsValues := .Files.Get "../../trdl_channels.yaml" | fromYaml -}}
 {{- range $_, $groupObject := $trdlChannelsValues.groups }}
+  {{- range $_, $channelObject := $groupObject.channels }}
+    {{- if semverCompare $nodeConstraint $channelObject.version }}
+      {{- $anyNodeVersion = true }}
+    {{- end }}
+  {{- end }}
   {{- if eq $groupObject.name $.DefaultGroupName }}
     {{- range $_, $channelObject := $groupObject.channels }}
       {{- if eq $channelObject.name $.DefaultChannelName}}
@@ -33,11 +41,15 @@ cleanup:
 
 {{- range $distroInd, $distroName := $.Distros }}
   {{ $_ := set $ "DistroName" $distroName }}
+  {{- if or $anyNodeVersion (not (hasSuffix "-node" $distroName)) }}
   {{- include "<app>-<distro>" $ }}
+  {{- end }}
 {{- end }}
 
 {{- include "latest" $ }}
+{{- if semverCompare $nodeConstraint $.DefaultChannelVersion }}
 {{- include "latest-node" $ }}
+{{- end }}
 
 {{- $trdlChannelsValues := .Files.Get "../../trdl_channels.yaml" | fromYaml -}}
 {{- range $groupInd, $groupObject := $trdlChannelsValues.groups }}
@@ -55,23 +67,29 @@ cleanup:
         {{ $_ := set $ "normalizedChannelVersion" $.ChannelVersion }}
       {{- end}}
       {{- include "<version>" $ }}
+      {{- if semverCompare $nodeConstraint $.ChannelVersion }}
       {{- include "<version>-node" $ }}
+      {{- end }}
     {{- end }}
 
     {{ $_ := set $ "ChannelName" $channelObject.name }}
     {{ $_ := set $ "ChannelVersion" $channelObject.version }}
 
 {{- include "<group>-<channel>" $ }}
+{{- if semverCompare $nodeConstraint $.ChannelVersion }}
 {{- include "<group>-<channel>-node" $ }}
+{{- end }}
 
     {{- range $distroInd, $distroName := $.Distros }}
       {{ $_ := set $ "DistroName" $distroName }}
+      {{- if or (not (hasSuffix "-node" $distroName)) (semverCompare $nodeConstraint $.ChannelVersion) }}
         {{- if not (has (printf "%s-%s" $.ChannelVersion $.DistroName) $uniqueChannelVersions) }}
           {{ $uniqueChannelVersions = append $uniqueChannelVersions (printf "%s-%s" $.ChannelVersion $.DistroName) }}
           {{- include "<version>-<distro>" $ }}
         {{- end }}
 
 {{- include "<group>-<channel>-<distro>" $ }}
+      {{- end }}
     {{- end }}
   {{- end }}
 
@@ -84,9 +102,13 @@ cleanup:
 
   {{- range $distroInd, $distroName := $.Distros }}
     {{ $_ := set $ "DistroName" $distroName }}
+    {{- if or (not (hasSuffix "-node" $distroName)) (semverCompare $nodeConstraint $.ChannelVersion) }}
 
 {{- include "<group>-<distro>" $ }}
+    {{- end }}
   {{- end }}
 {{- include "<group>" $ }}
+{{- if semverCompare $nodeConstraint $.ChannelVersion }}
 {{- include "<group>-node" $ }}
+{{- end }}
 {{- end }}

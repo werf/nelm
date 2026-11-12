@@ -64,6 +64,8 @@ for i in $(seq 0 $((group_count - 1))); do
   done
 done
 
+final_images=$(werf config list --final-images-only)
+
 for v in "${new_versions[@]}"; do
   glob_patterns+=("${v//+/.}*")
 done
@@ -75,8 +77,12 @@ for ch in "${changed_channels[@]}"; do
   glob_patterns+=("$group-$channel*")
 
   if [[ "$channel" == "stable" ]]; then
-    glob_patterns+=("$group" "$group-alpine" "$group-ubuntu" "$group-ubuntu-node" "$group-node")
-    glob_patterns+=("latest" "latest-node")
+    for image in "$group" "$group-alpine" "$group-ubuntu" "$group-ubuntu-node" "$group-node" "latest" "latest-node"; do
+      # -node images are not built for versions below NodeMinVersion.
+      if grep -qxF "$image" <<< "$final_images"; then
+        glob_patterns+=("$image")
+      fi
+    done
   fi
 done
 
