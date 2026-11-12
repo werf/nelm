@@ -90,7 +90,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`tpl_debug` function](#tpl_debug-function)
   - [`patches.yaml` file](#patchesyaml-file)
 - [Feature gates](#feature-gates)
-  - [`NELM_FEAT_TYPESCRIPT` environment variable](#nelm_feat_typescript-environment-variable)
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
   - [`NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS` environment variable](#nelm_feat_adopt_deckhouse_controller_fields-environment-variable)
 - [More documentation](#more-documentation)
@@ -315,7 +314,7 @@ Before deploying, Nelm validates rendered resources against the Kubernetes JSON 
 
 ### TypeScript charts
 
-With the `NELM_FEAT_TYPESCRIPT` feature gate, charts can render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates in `templates/`. `nelm chart ts init` adds the TypeScript boilerplate to a chart, `nelm chart ts build` bundles the code into `ts/dist/bundle.js`, and `nelm chart pack` bundles it automatically. See [`NELM_FEAT_TYPESCRIPT`](#nelm_feat_typescript-environment-variable).
+Charts can render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates in `templates/`. `nelm chart ts init` adds the TypeScript boilerplate to a chart, `nelm chart ts build` bundles the code into `ts/dist/bundle.js`, and `nelm chart pack` bundles it automatically.
 
 ## Usage
 
@@ -974,18 +973,7 @@ diffPatches:
 
 ## Feature gates
 
-Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning.
-
-### `NELM_FEAT_TYPESCRIPT` environment variable
-
-Render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates. Enables the `nelm chart ts` commands as well.
-
-Example:
-```shell
-export NELM_FEAT_TYPESCRIPT=true
-nelm chart ts init
-nelm chart render
-```
+Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning. The same applies to `NELM_FEAT_TYPESCRIPT`: TypeScript charts are enabled by default.
 
 ### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
 

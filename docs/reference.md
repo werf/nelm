@@ -47,7 +47,6 @@
   - [version](#version)
 - [Feature Gates](#feature-gates)
   - [NELM_FEAT_PERIODIC_STACK_TRACES](#nelm_feat_periodic_stack_traces)
-  - [NELM_FEAT_TYPESCRIPT](#nelm_feat_typescript)
   - [NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS](#nelm_feat_adopt_deckhouse_controller_fields)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -4627,12 +4626,6 @@ Feature gates are experimental features that can be enabled via environment vari
 **Default:** `false`
 
 Print stack traces periodically to help with debugging deadlocks and other issues
-
-### NELM_FEAT_TYPESCRIPT
-
-**Default:** `false`
-
-Enable TypeScript chart rendering from ts/ directory
 
 ### NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS
 

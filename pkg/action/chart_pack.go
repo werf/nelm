@@ -26,7 +26,6 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	v3util "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
 	"github.com/werf/nelm/v2/pkg/helm/intern/third_party/dep/fs"
@@ -239,10 +238,8 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		return nil, err
 	}
 
-	if featgate.FeatGateTypescript.Enabled() {
-		if err := ts.BundleChartsRecursive(ctx, chartAccessor, chartPath, !opts.TSNoRebuild); err != nil {
-			return nil, fmt.Errorf("process TypeScript files in chart: %w", err)
-		}
+	if err := ts.BundleChartsRecursive(ctx, chartAccessor, chartPath, !opts.TSNoRebuild); err != nil {
+		return nil, fmt.Errorf("process TypeScript files in chart: %w", err)
 	}
 
 	if deps := chartAccessor.MetaDependencies(); len(deps) > 0 {
