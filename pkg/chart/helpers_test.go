@@ -413,6 +413,17 @@ func renderedConfigMapNames(result *RenderChartResult) []string {
 	return names
 }
 
+func requireTestNode(t *testing.T) string {
+	t.Helper()
+
+	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
+	if nodePath == "" {
+		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
+	}
+
+	return nodePath
+}
+
 // reversedDependenciesChartDir copies the chart from testdata/layered-values and reverses the
 // dependencies in each Chart.yaml of the copy.
 func reversedDependenciesChartDir(t *testing.T, chartDir string) string {

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/v2/pkg/featgate"
 	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/ts"
@@ -45,12 +44,6 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		}
 
 		chartName = meta.Name
-	}
-
-	if !featgate.FeatGateTypescript.Enabled() {
-		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")
-
-		return fmt.Errorf("TypeScript charts feature is not enabled. Set NELM_FEAT_TYPESCRIPT=true to use this feature")
 	}
 
 	if err := os.MkdirAll(absPath, 0o755); err != nil {

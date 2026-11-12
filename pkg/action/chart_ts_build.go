@@ -12,7 +12,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/featgate"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
@@ -43,12 +42,6 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 	}
 
 	absPath = resolvedPath
-
-	if !featgate.FeatGateTypescript.Enabled() {
-		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")
-
-		return fmt.Errorf("TypeScript charts feature is not enabled. Set NELM_FEAT_TYPESCRIPT=true to use this feature")
-	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", absPath)
 
