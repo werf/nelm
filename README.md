@@ -104,11 +104,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 
 Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
 
-Nelm is also published as container images to `registry.werf.io/werf/nelm` and `ghcr.io/werf/nelm`:
-
-```bash
-docker run --rm -v "$PWD:/home/nelm/chart" -w /home/nelm/chart registry.werf.io/werf/nelm:2 nelm chart render
-```
+Nelm is also published as container images to `registry.werf.io/werf/nelm` and `ghcr.io/werf/nelm`.
 
 Tags: `<group>[-<channel>][-<os>]` and `<version>[-<os>]` (e.g., `2`, `2-stable`, `2-stable-ubuntu`, `2.4.0`), where `<os>` is `alpine` (default) or `ubuntu`. Tags with the `-node` suffix (e.g., `2-node`, `2-stable-node`, `latest-node`) point to the Ubuntu image with Node.js for rendering TypeScript charts.
 
