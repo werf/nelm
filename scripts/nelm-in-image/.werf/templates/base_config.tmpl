@@ -55,6 +55,9 @@ cleanup:
 {{- range $groupInd, $groupObject := $trdlChannelsValues.groups }}
   {{ $_ := set $ "GroupName" $groupObject.name }}
 
+  {{/* # 1 is a non-supported group. */}}
+  {{- if (eq $.GroupName "1") }}{{- continue }}{{- end }}
+
   {{- range $_, $channelObject := $groupObject.channels }}
     {{- if not (has $channelObject.version $uniqueArtifactVersions) }}
       {{ $uniqueArtifactVersions = append $uniqueArtifactVersions $channelObject.version }}

@@ -49,6 +49,12 @@ group_count=$(yq e '.groups | length' "$NEW")
 
 for i in $(seq 0 $((group_count - 1))); do
   group=$(yq e ".groups[$i].name" "$NEW")
+
+  if [[ "$group" == "1" ]]; then
+    echo "Skipping unsupported group $group"
+    continue
+  fi
+
   channel_count=$(yq e ".groups[$i].channels | length" "$NEW")
 
   for j in $(seq 0 $((channel_count - 1))); do
