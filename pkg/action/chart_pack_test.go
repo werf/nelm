@@ -24,7 +24,6 @@ import (
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	"github.com/werf/nelm/v2/pkg/helm/intern/resolver"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
@@ -672,6 +671,21 @@ appVersion: "1.2"
 	}
 }
 
+func TestChartPack_BuildsTypeScriptBundle(t *testing.T) {
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml":      "apiVersion: v2\nname: mychart\nversion: 1.0.0\n",
+		"ts/src/index.js": "console.log('rendered');\n",
+	})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: t.TempDir(),
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, readChartPackTestArchiveFiles(t, result.ArchivePath)["mychart/"+common.ChartTSBundleFile], "rendered")
+}
+
 func TestChartPack_ChecksChartPath(t *testing.T) {
 	chartFile := filepath.Join(t.TempDir(), "Chart.yaml")
 	writeChartPackTestFiles(t, filepath.Dir(chartFile), map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
@@ -1043,8 +1057,6 @@ func TestChartPack_StagesInTempDir(t *testing.T) {
 }
 
 func TestChartPack_TypeScriptBundle(t *testing.T) {
-	t.Setenv(featgate.FeatGateTypescript.EnvVarName(), "true")
-
 	for _, apiVersion := range []string{"v2", "v3"} {
 		t.Run(apiVersion, func(t *testing.T) {
 			chartDir := filepath.Join(t.TempDir(), "mychart")

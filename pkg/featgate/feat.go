@@ -17,10 +17,6 @@ var (
 		"periodic-stack-traces",
 		`Print stack traces periodically to help with debugging deadlocks and other issues`,
 	)
-	FeatGateTypescript = NewFeatGate(
-		"typescript",
-		`Enable TypeScript chart rendering from ts/ directory`,
-	)
 	FeatGateAdoptDeckhouseControllerFields = NewFeatGate(
 		"adopt-deckhouse-controller-fields",
 		`Adopt managed fields owned by the legacy "deckhouse-controller" field manager (the pre-nelm Helm 3 engine). Unsafe if any resource still has hook-owned "deckhouse-controller" entries`,

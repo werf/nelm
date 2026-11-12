@@ -24,7 +24,6 @@ import (
 
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	chartv3util "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
@@ -396,17 +395,15 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("render resources for chart %q: %w", chartAccessor.Name(), err)
 	}
 
-	if featgate.FeatGateTypescript.Enabled() {
-		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chartAccessor.Name())
+	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chartAccessor.Name())
 
-		jsRenderedTemplates, err := ts.RenderChart(ctx, chartAccessor, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.NodeBinaryPath)
-		if err != nil {
-			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
-		}
+	jsRenderedTemplates, err := ts.RenderChart(ctx, chartAccessor, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.NodeBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
+	}
 
-		if len(jsRenderedTemplates) > 0 {
-			maps.Copy(renderedTemplates, jsRenderedTemplates)
-		}
+	if len(jsRenderedTemplates) > 0 {
+		maps.Copy(renderedTemplates, jsRenderedTemplates)
 	}
 
 	log.Default.Debug(ctx, "Rendered content:")
