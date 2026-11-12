@@ -965,7 +965,7 @@ diffPatches:
 
 ## Feature gates
 
-Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning.
+Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning. The same applies to `NELM_FEAT_TYPESCRIPT`: TypeScript charts are enabled by default.
 
 ### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
 
