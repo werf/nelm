@@ -37,6 +37,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+
       - name: Install Task
         uses: go-task/setup-task@v2
         with:
@@ -55,6 +60,7 @@ jobs:
 
       - name: Test
         run: |
+          export NELM_TEST_NODE_BINARY_PATH="$(command -v node)"
           if ${{ inputs.coverage }}; then
             task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" skipPackage="${{ inputs.excludePackages }}" -- --coverprofile="$(openssl rand -hex 6)-coverage.out" --keep-going
             mv *-coverage.out "$GITHUB_WORKSPACE/coverage/"
