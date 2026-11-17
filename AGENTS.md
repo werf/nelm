@@ -10,7 +10,6 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 - ALWAYS use `task` commands for build/test/lint/format — NEVER raw `go build`, `go test`, `go vet`, `go fmt`, or `golangci-lint` directly.
 - ALWAYS use `log.Default` from `pkg/log` for logging. NEVER use `fmt.Println`, `slog`, or `logrus` directly.
 - ALWAYS verify, don't assume — check the actual state before making changes.
-- ALWAYS read [Commit/branch/PR naming](CONTRIBUTING.md#commitbranchpr-naming) before creating or changing a commit, branch, or PR. ALWAYS follow the formats and use only the commit types listed there.
 - ALWAYS start with the simplest possible solution. If it works, stop. Add complexity only when justified by a concrete, current requirement — NEVER for hypothetical future needs.
 - NEVER leave TODOs, stubs, or partial implementations.
 - ALWAYS stay within the scope of what was asked. When asked to update a plan — only update the plan, don't change code. When asked to brainstorm/discuss — only discuss, don't write code. When asked to do X — do X and nothing else. NEVER make unsolicited changes.
@@ -92,6 +91,10 @@ ALWAYS use these `task` commands. NEVER use raw `go build`, `go test`, `go fmt`,
 - Test helpers go in `helpers_test.go`.
 - Test fixtures go in `testdata/` subdirectory next to the tests.
 - Shared test helpers are in `pkg/test/`.
+
+## Commit/branch/PR naming (MANDATORY)
+
+- ALWAYS read [Commit/branch/PR naming](CONTRIBUTING.md#commitbranchpr-naming) before creating or changing a commit, branch, or PR. ALWAYS follow the formats and use only the commit types listed there.
 
 ## PR review guidelines (MANDATORY)
 
