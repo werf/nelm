@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -247,14 +248,16 @@ func requireStubNotRun(t *testing.T, binDir, name string) {
 	require.NoFileExists(t, filepath.Join(binDir, name+".args"), "%s must not be run", name)
 }
 
-// requireTestNode returns the Node.js to run the tests that need a real one with, taken from
-// NELM_TEST_NODE_BINARY_PATH, and skips the test if it is not set.
 func requireTestNode(t *testing.T) string {
 	t.Helper()
 
-	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
-	if nodePath == "" {
-		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
+	if nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH"); nodePath != "" {
+		return nodePath
+	}
+
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skipf("Node.js is not available in PATH: %s", err)
 	}
 
 	return nodePath

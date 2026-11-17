@@ -37,6 +37,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+
       - name: Install Task
         uses: go-task/setup-task@v2
         with:
