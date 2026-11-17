@@ -92,6 +92,10 @@ ALWAYS use these `task` commands. NEVER use raw `go build`, `go test`, `go fmt`,
 - Test fixtures go in `testdata/` subdirectory next to the tests.
 - Shared test helpers are in `pkg/test/`.
 
+## Commit/branch/PR naming (MANDATORY)
+
+- ALWAYS read [Commit/branch/PR naming](CONTRIBUTING.md#commitbranchpr-naming) before creating or changing a commit, branch, or PR. ALWAYS follow the formats and use only the commit types listed there.
+
 ## PR review guidelines (MANDATORY)
 
 - NEVER add new external dependencies without flagging to the user first.
