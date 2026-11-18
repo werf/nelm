@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "nelm-chart-ts dev --input-file input.example.yaml",
-    "typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.test.json",
+    "typecheck": "tsc --build",
     "test": "node --import=tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {

@@ -3,7 +3,9 @@ package ts_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -223,6 +225,8 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"src/helpers.ts",
 			"src/index.ts",
 			"src/service.ts",
+			"src/values.test.json",
+			"tsconfig.app.json",
 			"tsconfig.json",
 			"tsconfig.test.json",
 		}, paths)
@@ -258,7 +262,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Equal(t, true, packageJSON["private"])
 		assert.Equal(t, map[string]any{
 			"dev":       "nelm-chart-ts dev --input-file input.example.yaml",
-			"typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.test.json",
+			"typecheck": "tsc --build",
 			"test":      `node --import=tsx --test "src/**/*.test.ts"`,
 		}, packageJSON["scripts"])
 		assert.Equal(t, map[string]any{"@nelm/chart-ts-sdk": "^0.2.0"}, packageJSON["dependencies"])
@@ -291,8 +295,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		var tsconfig struct {
 			CompilerOptions map[string]any `json:"compilerOptions"`
-			Include         []string       `json:"include"`
-			Exclude         []string       `json:"exclude"`
+			Files           []string       `json:"files"`
+			References      []struct {
+				Path string `json:"path"`
+			} `json:"references"`
 		}
 		require.NoError(t, json.Unmarshal(content, &tsconfig))
 
@@ -308,8 +314,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"skipLibCheck":               true,
 			"types":                      []any{},
 		}, tsconfig.CompilerOptions)
-		assert.Equal(t, []string{"src"}, tsconfig.Include)
-		assert.Equal(t, []string{"src/**/*.test.ts"}, tsconfig.Exclude)
+		assert.Empty(t, tsconfig.Files)
+		require.Len(t, tsconfig.References, 2)
+		assert.Equal(t, "./tsconfig.app.json", tsconfig.References[0].Path)
+		assert.Equal(t, "./tsconfig.test.json", tsconfig.References[1].Path)
 	})
 
 	t.Run("uses RenderContext by default", func(t *testing.T) {
@@ -489,6 +497,20 @@ func TestInitTSBoilerplateInput(t *testing.T) {
 			}
 
 			assert.NotContains(t, string(content), "example-chart")
+
+			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "values.test.json"))
+			require.NoError(t, err)
+
+			var testValues map[string]any
+			require.NoError(t, json.Unmarshal(content, &testValues))
+
+			if contextType == "WerfRenderContext" {
+				require.Contains(t, testValues, "global")
+				global := testValues["global"].(map[string]any)
+				assert.Equal(t, "myapp", global["werf"].(map[string]any)["name"])
+			} else {
+				assert.Empty(t, testValues)
+			}
 		})
 	}
 }
@@ -518,10 +540,33 @@ func TestInitTSBoilerplateWithNode(t *testing.T) {
 			cmd := exec.CommandContext(ctx, taskPath, "--taskfile", taskfilePath, "test:ts-scaffold", "dir="+filepath.Join(chartPath, "ts"))
 			output, err := cmd.CombinedOutput()
 			require.NoError(t, err, "%s", output)
-			assert.Contains(t, string(output), "kind: Deployment")
-			assert.Contains(t, string(output), "kind: Service")
 			assert.Contains(t, string(output), "uses defaults with empty values")
-			assert.Contains(t, string(output), "generated-chart")
+			_, rendered, found := strings.Cut(string(output), "Rendered manifests:\n")
+			require.True(t, found, "%s", output)
+
+			names := make(map[string]string)
+
+			decoder := yaml.NewDecoder(strings.NewReader(rendered))
+			for {
+				var manifest struct {
+					Kind     string `yaml:"kind"`
+					Metadata struct {
+						Name string `yaml:"name"`
+					} `yaml:"metadata"`
+				}
+
+				err := decoder.Decode(&manifest)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+
+				require.NoError(t, err)
+
+				names[manifest.Kind] = manifest.Metadata.Name
+			}
+
+			assert.Equal(t, map[string]string{"Deployment": "generated-chart", "Service": "generated-chart"}, names)
+			checkScaffoldEditor(t, filepath.Join(chartPath, "ts"))
 		})
 	}
 }

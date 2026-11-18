@@ -31,7 +31,7 @@ service:
 )
 
 var (
-	//go:embed scaffold/package.json scaffold/tsconfig*.json scaffold/input.example.yaml scaffold/src/*.ts
+	//go:embed scaffold/package.json scaffold/tsconfig*.json scaffold/input.example.yaml scaffold/src/*.ts scaffold/src/*.json
 	scaffoldFiles embed.FS
 
 	//go:embed scaffold/values_werf.yaml

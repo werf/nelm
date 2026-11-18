@@ -101,6 +101,15 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 			content = []byte(fmt.Sprintf("export type { %s as ChartContext } from '@nelm/chart-ts-sdk';\n", ctxType))
 		case "input.example.yaml":
 			content, err = scaffoldInput(content, chartName, ctxType)
+		case "src/values.test.json":
+			if ctxType == common.TSWerfRenderContextType {
+				var extraValues []byte
+				if extraValues, err = yaml.YAMLToJSON([]byte(scaffoldExtraValues)); err != nil {
+					return fmt.Errorf("convert extra test values to JSON: %w", err)
+				}
+
+				content, err = sjson.SetRawBytes(content, "global", extraValues)
+			}
 		}
 
 		if err != nil {
