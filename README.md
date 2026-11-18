@@ -544,10 +544,6 @@ Default:
 
 Sets the stage in which the resource is deleted after it was removed from the Chart (or when the release is uninstalled), separately for each deploy type. `pre-*` means delete the resource after the resources of the pre stage (e.g. `pre-upgrade` hooks) are deployed, but before the main stage. `install`, `upgrade`, `rollback` and `delete` mean delete the resource after the resources of the main stage are deployed and ready. `post-*` means delete the resource after the resources of the post stage are deployed. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
 
-The annotation is read from the previous release, so it must be deployed with the resource before the resource is removed from the Chart. If the deployment fails before the specified stage, the resource is not deleted.
-
-`werf.io/delete-dependency-<id>` has no effect on internal dependencies deleted in a different stage, and a resource deleted in an earlier stage than the resources using it might get stuck in the `Terminating` state until they are deleted. Unless another resource depends on its absence, Nelm doesn't wait for absence of a deleted `PersistentVolumeClaim` or `PersistentVolume` on install, upgrade and rollback, and in the `pre-delete` stage of uninstall, since Pods using them might still be running.
-
 Example:
 ```yaml
 werf.io/delete-on: post-upgrade,post-rollback
