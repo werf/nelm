@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { describe, it } from 'node:test';
 import type { ChartContext } from './context.ts';
 import { newDeployment } from './deployment.ts';
 import defaultValues from './values.test.json' with { type: 'json' };
@@ -46,56 +46,58 @@ function newContext(values: Record<string, unknown>): ChartContext {
   };
 }
 
-test('uses defaults with empty values', () => {
-  assert.partialDeepStrictEqual(newDeployment(newContext({})), {
-    apiVersion: 'apps/v1',
-    kind: 'Deployment',
-    metadata: { name: 'example-release-example-chart' },
-    spec: {
-      replicas: 1,
-      template: {
-        spec: {
-          containers: [{ image: 'nginx:latest', ports: [{ containerPort: 80 }] }],
+describe('newDeployment', () => {
+  it('uses defaults with empty values', () => {
+    assert.partialDeepStrictEqual(newDeployment(newContext({})), {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: 'example-release-example-chart' },
+      spec: {
+        replicas: 1,
+        template: {
+          spec: {
+            containers: [{ image: 'nginx:latest', ports: [{ containerPort: 80 }] }],
+          },
         },
       },
-    },
-  });
-});
-
-test('uses custom values', () => {
-  const context = newContext({
-    fullnameOverride: 'custom-app',
-    replicaCount: 3,
-    image: { repository: 'example.org/app', tag: '1.2.3' },
-    service: { port: 8080 },
-  });
-
-  assert.partialDeepStrictEqual(newDeployment(context), {
-    metadata: { name: 'custom-app' },
-    spec: {
-      replicas: 3,
-      template: {
-        spec: {
-          containers: [{ image: 'example.org/app:1.2.3', ports: [{ containerPort: 8080 }] }],
-        },
-      },
-    },
-  });
-});
-
-test('uses defaults for a partially specified image', () => {
-  for (const [image, expected] of [
-    [{ repository: 'example.org/app' }, 'example.org/app:latest'],
-    [{ tag: 'stable' }, 'nginx:stable'],
-  ] as const) {
-    assert.partialDeepStrictEqual(newDeployment(newContext({ image })), {
-      spec: { template: { spec: { containers: [{ image: expected }] } } },
     });
-  }
-});
+  });
 
-test('preserves zero replicas', () => {
-  assert.partialDeepStrictEqual(newDeployment(newContext({ replicaCount: 0 })), {
-    spec: { replicas: 0 },
+  it('uses custom values', () => {
+    const context = newContext({
+      fullnameOverride: 'custom-app',
+      replicaCount: 3,
+      image: { repository: 'example.org/app', tag: '1.2.3' },
+      service: { port: 8080 },
+    });
+
+    assert.partialDeepStrictEqual(newDeployment(context), {
+      metadata: { name: 'custom-app' },
+      spec: {
+        replicas: 3,
+        template: {
+          spec: {
+            containers: [{ image: 'example.org/app:1.2.3', ports: [{ containerPort: 8080 }] }],
+          },
+        },
+      },
+    });
+  });
+
+  it('uses defaults for a partially specified image', () => {
+    for (const [image, expected] of [
+      [{ repository: 'example.org/app' }, 'example.org/app:latest'],
+      [{ tag: 'stable' }, 'nginx:stable'],
+    ] as const) {
+      assert.partialDeepStrictEqual(newDeployment(newContext({ image })), {
+        spec: { template: { spec: { containers: [{ image: expected }] } } },
+      });
+    }
+  });
+
+  it('preserves zero replicas', () => {
+    assert.partialDeepStrictEqual(newDeployment(newContext({ replicaCount: 0 })), {
+      spec: { replicas: 0 },
+    });
   });
 });
