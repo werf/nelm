@@ -262,6 +262,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Equal(t, true, packageJSON["private"])
 		assert.Equal(t, map[string]any{
 			"dev":       "nelm-chart-ts dev --input-file input.example.yaml",
+			"dev:debug": "nelm-chart-ts dev --input-file input.example.yaml --inspect-brk",
 			"typecheck": "tsc --build",
 			"test":      `node --import=tsx --test "src/**/*.test.ts"`,
 		}, packageJSON["scripts"])
