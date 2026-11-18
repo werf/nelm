@@ -542,7 +542,7 @@ Default:
 
 ### `werf.io/delete-on` annotation
 
-Sets the stage in which the resource is deleted after it was removed from the Chart (or when the release is uninstalled), separately for each deploy type. `pre-*` means delete the resource after the resources of the pre stage (e.g. `pre-upgrade` hooks) are deployed, but before the main stage. `install`, `upgrade`, `rollback` and `delete` mean delete the resource after the resources of the main stage are deployed and ready. `post-*` means delete the resource after the resources of the post stage are deployed. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
+Sets the stage in which the resource is deleted after it was removed from the Chart (or when the release is uninstalled), separately for each deploy type. Deletion runs after the corresponding pre, main or post deployment stage completes. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
