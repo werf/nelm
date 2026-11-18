@@ -99,6 +99,20 @@ type stubRun struct {
 	dir     string
 }
 
+func checkScaffoldEditor(t *testing.T, tsDir string) {
+	t.Helper()
+
+	scriptPath, err := filepath.Abs(filepath.Join("testdata", "check-editor.mjs"))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, requireTestNode(t), scriptPath, tsDir) //nolint:gosec // G204: test-selected Node runs a repository-owned script
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+}
+
 // runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
 // logged. The fake Node.js is a single process, so stopping it stops writing.
 func runOutput(t *testing.T, catPath, output string) []string {

@@ -250,6 +250,15 @@ tasks:
           skipPackage: "{{.skipPackage}}"
           parallel: "{{.parallel}}"
 
+  test:ts-scaffold:
+    desc: 'Install dependencies, typecheck, test and render the TypeScript scaffold. Important vars: "dir".'
+    dir: '{{.dir | default "pkg/ts/scaffold"}}'
+    cmds:
+      - npm install --ignore-scripts
+      - npm run typecheck
+      - npm test
+      - npm run dev
+
   verify:binaries:dist:all:
     desc: 'Verify that the distributable binaries are built and have correct platform/arch. Important vars: "version".'
     cmds:

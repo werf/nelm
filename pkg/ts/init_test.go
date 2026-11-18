@@ -3,11 +3,18 @@ package ts_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,14 +199,37 @@ func TestInitTSBoilerplate(t *testing.T) {
 		err := ts.InitTSBoilerplate(context.Background(), chartPath, "test-chart", ts.InitTSBoilerplateOptions{})
 		require.NoError(t, err)
 
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "index.ts"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "helpers.ts"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "deployment.ts"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "service.ts"))
+		var paths []string
+		require.NoError(t, filepath.WalkDir(filepath.Join(chartPath, "ts"), func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
 
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "package.json"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "tsconfig.json"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "input.example.yaml"))
+			if !entry.IsDir() {
+				relPath, err := filepath.Rel(filepath.Join(chartPath, "ts"), path)
+				if err != nil {
+					return fmt.Errorf("get scaffold file path: %w", err)
+				}
+
+				paths = append(paths, filepath.ToSlash(relPath))
+			}
+
+			return nil
+		}))
+		assert.ElementsMatch(t, []string{
+			"input.example.yaml",
+			"package.json",
+			"src/context.ts",
+			"src/deployment.test.ts",
+			"src/deployment.ts",
+			"src/helpers.ts",
+			"src/index.ts",
+			"src/service.ts",
+			"src/values.test.json",
+			"tsconfig.app.json",
+			"tsconfig.json",
+			"tsconfig.test.json",
+		}, paths)
 	})
 
 	t.Run("creates correct directory structure", func(t *testing.T) {
@@ -232,10 +262,12 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Equal(t, true, packageJSON["private"])
 		assert.Equal(t, map[string]any{
 			"dev":       "nelm-chart-ts dev --input-file input.example.yaml",
-			"typecheck": "tsc",
+			"dev:debug": "nelm-chart-ts dev --input-file input.example.yaml --inspect-brk",
+			"typecheck": "tsc --build",
+			"test":      `node --import=tsx --test "src/**/*.test.ts"`,
 		}, packageJSON["scripts"])
 		assert.Equal(t, map[string]any{"@nelm/chart-ts-sdk": "^0.2.0"}, packageJSON["dependencies"])
-		assert.Equal(t, map[string]any{"typescript": "~6.0.3"}, packageJSON["devDependencies"])
+		assert.Equal(t, map[string]any{"@types/node": "^26.6.6", "tsx": "^4.23.15", "typescript": "~6.0.3"}, packageJSON["devDependencies"])
 	})
 
 	t.Run("names the package after the chart", func(t *testing.T) {
@@ -264,7 +296,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		var tsconfig struct {
 			CompilerOptions map[string]any `json:"compilerOptions"`
-			Include         []string       `json:"include"`
+			Files           []string       `json:"files"`
+			References      []struct {
+				Path string `json:"path"`
+			} `json:"references"`
 		}
 		require.NoError(t, json.Unmarshal(content, &tsconfig))
 
@@ -280,7 +315,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"skipLibCheck":               true,
 			"types":                      []any{},
 		}, tsconfig.CompilerOptions)
-		assert.Equal(t, []string{"src"}, tsconfig.Include)
+		assert.Empty(t, tsconfig.Files)
+		require.Len(t, tsconfig.References, 2)
+		assert.Equal(t, "./tsconfig.app.json", tsconfig.References[0].Path)
+		assert.Equal(t, "./tsconfig.test.json", tsconfig.References[1].Path)
 	})
 
 	t.Run("uses RenderContext by default", func(t *testing.T) {
@@ -293,10 +331,13 @@ func TestInitTSBoilerplate(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "index.ts"))
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "function generate")
-		assert.Contains(t, string(content), "RenderContext")
+		assert.Contains(t, string(content), "ChartContext")
 		assert.Contains(t, string(content), "RenderResult")
 		assert.Contains(t, string(content), "await render(generate)")
 		assert.NotContains(t, string(content), "WerfRenderContext")
+		content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "context.ts"))
+		require.NoError(t, err)
+		assert.Equal(t, "export type { RenderContext as ChartContext } from '@nelm/chart-ts-sdk';\n", string(content))
 	})
 
 	t.Run("uses custom render context type when specified", func(t *testing.T) {
@@ -311,9 +352,13 @@ func TestInitTSBoilerplate(t *testing.T) {
 		for _, file := range []string{"index.ts", "helpers.ts", "deployment.ts", "service.ts"} {
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", file))
 			require.NoError(t, err)
-			assert.Contains(t, string(content), "WerfRenderContext", "file %s should use WerfRenderContext", file)
+			assert.Contains(t, string(content), "ChartContext", "file %s should use ChartContext", file)
 			assert.NotContains(t, string(content), "import type { RenderContext }", "file %s should not import RenderContext", file)
 		}
+
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "context.ts"))
+		require.NoError(t, err)
+		assert.Equal(t, "export type { WerfRenderContext as ChartContext } from '@nelm/chart-ts-sdk';\n", string(content))
 	})
 
 	t.Run("includes helper functions in helpers.ts", func(t *testing.T) {
@@ -418,7 +463,115 @@ func TestInitTSBoilerplate(t *testing.T) {
 	})
 }
 
-// ignoreFileEntries returns the lines of an ignore file that are neither empty nor comments.
+func TestInitTSBoilerplateInput(t *testing.T) {
+	for _, contextType := range []string{"RenderContext", "WerfRenderContext"} {
+		t.Run(contextType, func(t *testing.T) {
+			chartPath := t.TempDir()
+			require.NoError(t, ts.InitTSBoilerplate(context.Background(), chartPath, "My-Chart", ts.InitTSBoilerplateOptions{
+				RenderContextType: contextType,
+			}))
+
+			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "input.example.yaml"))
+			require.NoError(t, err)
+
+			var input map[string]any
+			require.NoError(t, yaml.Unmarshal(content, &input))
+			chart := input["Chart"].(map[string]any)
+			assert.Equal(t, "My-Chart", chart["Name"])
+			assert.Equal(t, "My-Chart.enabled", chart["Condition"])
+			assert.Equal(t, "My-Chart description", chart["Description"])
+			assert.Equal(t, []any{"My-Chart"}, chart["Keywords"])
+			assert.Equal(t, []any{"https://example.org/My-Chart"}, chart["Sources"])
+			assert.Equal(t, "My-Chart", chart["Tags"])
+
+			release := input["Release"].(map[string]any)
+			assert.Equal(t, "My-Chart", release["Name"])
+			assert.Equal(t, "My-Chart", release["Namespace"])
+
+			values := input["Values"].(map[string]any)
+			assert.Equal(t, "nginx", values["image"].(map[string]any)["repository"])
+			assert.Equal(t, contextType == "WerfRenderContext", values["global"] != nil)
+
+			if contextType == "WerfRenderContext" {
+				global := values["global"].(map[string]any)
+				assert.Equal(t, "myapp", global["werf"].(map[string]any)["name"])
+			}
+
+			assert.NotContains(t, string(content), "example-chart")
+
+			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "values.test.json"))
+			require.NoError(t, err)
+
+			var testValues map[string]any
+			require.NoError(t, json.Unmarshal(content, &testValues))
+
+			if contextType == "WerfRenderContext" {
+				require.Contains(t, testValues, "global")
+				global := testValues["global"].(map[string]any)
+				assert.Equal(t, "myapp", global["werf"].(map[string]any)["name"])
+			} else {
+				assert.Empty(t, testValues)
+			}
+		})
+	}
+}
+
+func TestInitTSBoilerplateWithNode(t *testing.T) {
+	if os.Getenv("NELM_TEST_TS_SCAFFOLD") != "1" {
+		t.Skip("set NELM_TEST_TS_SCAFFOLD=1 to install dependencies and check the generated scaffold")
+	}
+
+	taskPath, err := exec.LookPath("task")
+	require.NoError(t, err)
+	taskfilePath, err := filepath.Abs(filepath.Join("..", "..", "Taskfile.dist.yaml"))
+	require.NoError(t, err)
+
+	for _, contextType := range []string{"RenderContext", "WerfRenderContext"} {
+		t.Run(contextType, func(t *testing.T) {
+			chartPath := t.TempDir()
+			require.NoError(t, ts.InitTSBoilerplate(context.Background(), chartPath, "generated-chart", ts.InitTSBoilerplateOptions{
+				RenderContextType: contextType,
+			}))
+			assert.NoFileExists(t, filepath.Join(chartPath, "Chart.yaml"))
+			assert.NoFileExists(t, filepath.Join(chartPath, "ts", "package-lock.json"))
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, taskPath, "--taskfile", taskfilePath, "test:ts-scaffold", "dir="+filepath.Join(chartPath, "ts"))
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, "%s", output)
+			assert.Contains(t, string(output), "uses defaults with empty values")
+			_, rendered, found := strings.Cut(string(output), "Rendered manifests:\n")
+			require.True(t, found, "%s", output)
+
+			names := make(map[string]string)
+
+			decoder := yaml.NewDecoder(strings.NewReader(rendered))
+			for {
+				var manifest struct {
+					Kind     string `yaml:"kind"`
+					Metadata struct {
+						Name string `yaml:"name"`
+					} `yaml:"metadata"`
+				}
+
+				err := decoder.Decode(&manifest)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+
+				require.NoError(t, err)
+
+				names[manifest.Kind] = manifest.Metadata.Name
+			}
+
+			assert.Equal(t, map[string]string{"Deployment": "generated-chart", "Service": "generated-chart"}, names)
+			checkScaffoldEditor(t, filepath.Join(chartPath, "ts"))
+		})
+	}
+}
+
 func ignoreFileEntries(t *testing.T, path string) []string {
 	t.Helper()
 

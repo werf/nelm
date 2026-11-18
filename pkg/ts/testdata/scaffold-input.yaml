@@ -1,0 +1,26 @@
+Values:
+  z-last: 1
+  a-first: false
+  nested:
+    z: last
+    a: first
+Release:
+  Namespace: example-chart
+  Name: example-chart
+  Revision: 2
+  IsUpgrade: true
+  IsInstall: false
+  Service: Helm
+Chart:
+  Tags: example-chart
+  Sources:
+    - https://example.org/example-chart
+  Name: example-chart
+  Keywords:
+    - example-chart
+  Description: example-chart description
+  Condition: example-chart.enabled
+Capabilities:
+  KubeVersion:
+    Minor: "35"
+    Major: "1"
