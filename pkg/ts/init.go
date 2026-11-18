@@ -2,6 +2,7 @@ package ts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -101,14 +102,19 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 			content = []byte(fmt.Sprintf("export type { %s as ChartContext } from '@nelm/chart-ts-sdk';\n", ctxType))
 		case "input.example.yaml":
 			content, err = scaffoldInput(content, chartName, ctxType)
-		case "src/values.test.json":
+		case "src/deployment.test.ts":
 			if ctxType == common.TSWerfRenderContextType {
-				var extraValues []byte
-				if extraValues, err = yaml.YAMLToJSON([]byte(scaffoldExtraValues)); err != nil {
+				extraValues, err := yaml.YAMLToJSON([]byte(scaffoldExtraValues))
+				if err != nil {
 					return fmt.Errorf("convert extra test values to JSON: %w", err)
 				}
 
-				content, err = sjson.SetRawBytes(content, "global", extraValues)
+				testValues, err := json.MarshalIndent(map[string]json.RawMessage{"global": extraValues}, "", "  ")
+				if err != nil {
+					return fmt.Errorf("format extra test values: %w", err)
+				}
+
+				content = []byte(strings.Replace(string(content), "const defaultValues = {};", fmt.Sprintf("const defaultValues = %s;", testValues), 1))
 			}
 		}
 

@@ -225,7 +225,6 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"src/helpers.ts",
 			"src/index.ts",
 			"src/service.ts",
-			"src/values.test.json",
 			"tsconfig.app.json",
 			"tsconfig.json",
 			"tsconfig.test.json",
@@ -499,11 +498,18 @@ func TestInitTSBoilerplateInput(t *testing.T) {
 
 			assert.NotContains(t, string(content), "example-chart")
 
-			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "values.test.json"))
+			assert.NoFileExists(t, filepath.Join(chartPath, "ts", "src", "values.test.json"))
+
+			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "deployment.test.ts"))
 			require.NoError(t, err)
 
+			_, testValuesJSON, found := strings.Cut(string(content), "const defaultValues = ")
+			require.True(t, found)
+			testValuesJSON, _, found = strings.Cut(testValuesJSON, ";\n")
+			require.True(t, found)
+
 			var testValues map[string]any
-			require.NoError(t, json.Unmarshal(content, &testValues))
+			require.NoError(t, json.Unmarshal([]byte(testValuesJSON), &testValues))
 
 			if contextType == "WerfRenderContext" {
 				require.Contains(t, testValues, "global")
