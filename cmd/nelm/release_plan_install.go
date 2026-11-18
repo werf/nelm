@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,8 @@ import (
 
 type releasePlanInstallConfig struct {
 	action.ReleasePlanInstallOptions
+
+	NoDiffPaths []string
 
 	LogColorMode     string
 	LogLevel         string
@@ -50,6 +53,13 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 
 			if len(args) > 0 {
 				cfg.Chart = args[0]
+			}
+
+			if len(cfg.NoDiffPaths) > 0 {
+				if cfg.ExtraAnnotations == nil {
+					cfg.ExtraAnnotations = map[string]string{}
+				}
+				cfg.ExtraAnnotations["werf.io/no-diff-paths"] = strings.Join(cfg.NoDiffPaths, ",")
 			}
 
 			if _, err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleasePlanInstallOptions); err != nil {
@@ -132,6 +142,13 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 
 		if err := cli.AddFlag(cmd, &cfg.DiffContextLines, "diff-context-lines", common.DefaultDiffContextLines, "Show N lines of context around diffs", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.NoDiffPaths, "diff-hide", []string{}, "Hide diffs for the specified JSON paths", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
