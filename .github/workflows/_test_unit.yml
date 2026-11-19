@@ -37,6 +37,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+
       - name: Install Task
         uses: go-task/setup-task@v2
         with:
@@ -53,7 +58,12 @@ jobs:
         if: ${{ inputs.coverage }}
         run: mkdir -p "$GITHUB_WORKSPACE/coverage"
 
+      - name: Test TypeScript scaffold
+        run: task test:ts-scaffold
+
       - name: Test
+        env:
+          NELM_TEST_TS_SCAFFOLD: "1"
         run: |
           if ${{ inputs.coverage }}; then
             task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" skipPackage="${{ inputs.excludePackages }}" -- --coverprofile="$(openssl rand -hex 6)-coverage.out" --keep-going

@@ -1,47 +1,8 @@
 package ts
 
+import "embed"
+
 const (
-	deploymentTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
-import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
-
-export function newDeployment($: {{ .RenderContextType }}): object {
-  const name = getFullname($);
-
-  return {
-    apiVersion: 'apps/v1',
-    kind: 'Deployment',
-    metadata: {
-      name,
-      labels: getLabels($),
-    },
-    spec: {
-      replicas: $.Values.replicaCount ?? 1,
-      selector: {
-        matchLabels: getSelectorLabels($),
-      },
-      template: {
-        metadata: {
-          labels: getSelectorLabels($),
-        },
-        spec: {
-          containers: [
-            {
-              name: name,
-              image: ` + "($.Values.image?.repository ?? 'nginx') + ':' + ($.Values.image?.tag ?? 'latest')" + `,
-              ports: [
-                {
-                  name: 'http',
-                  containerPort: $.Values.service?.port ?? 80,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
-  };
-}
-`
 	helmignoreContent = `# Patterns to ignore when building packages.
 # This supports shell glob matching, relative path matching, and
 # negation (prefixed with !). Only one pattern per line.
@@ -56,202 +17,6 @@ ts/.yarn/__virtual__/
 ts/.yarn/install-state.gz
 ts/.yarn/build-state.yml
 `
-	helpersTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
-
-/**
- * Truncate string to max length, removing trailing hyphens.
- */
-export function trunc(str: string, max: number): string {
-  if (str.length <= max) return str;
-  return str.slice(0, max).replace(/-+$/, '');
-}
-
-/**
- * Get the fully qualified app name.
- * Truncated at 63 chars (DNS naming spec limit).
- */
-export function getFullname($: {{ .RenderContextType }}): string {
-  if ($.Values.fullnameOverride) {
-    return trunc($.Values.fullnameOverride, 63);
-  }
-
-  const chartName = $.Values.nameOverride || $.Chart.Name;
-
-  if ($.Release.Name.includes(chartName)) {
-    return trunc($.Release.Name, 63);
-  }
-
-  return trunc(` + "`${$.Release.Name}-${chartName}`" + `, 63);
-}
-
-export function getLabels($: {{ .RenderContextType }}): Record<string, string> {
-  return {
-    'app.kubernetes.io/name': $.Chart.Name,
-    'app.kubernetes.io/instance': $.Release.Name,
-  };
-}
-
-export function getSelectorLabels($: {{ .RenderContextType }}): Record<string, string> {
-  return {
-    'app.kubernetes.io/name': $.Chart.Name,
-    'app.kubernetes.io/instance': $.Release.Name,
-  };
-}
-`
-	indexTSTmpl = `import { type {{ .RenderContextType }}, type RenderResult, render } from '@nelm/chart-ts-sdk';
-import { newDeployment } from './deployment.ts';
-import { newService } from './service.ts';
-
-function generate($: {{ .RenderContextType }}): RenderResult {
-  const manifests: object[] = [];
-
-  manifests.push(newDeployment($));
-
-  if ($.Values.service?.enabled !== false) {
-    manifests.push(newService($));
-  }
-
-  return { manifests };
-}
-
-await render(generate);
-`
-	inputExampleTmpl = `Capabilities:
-  APIVersions:
-    - v1
-  HelmVersion:
-    go_version: go1.25.0
-    version: v3.20
-  KubeVersion:
-    Major: "1"
-    Minor: "35"
-    Version: v1.35.0
-Chart:
-  APIVersion: v2
-  Annotations:
-    anno: value
-  AppVersion: 1.0.0
-  Condition: {{ .ChartName }}.enabled
-  Description: {{ .ChartName }} description
-  Home: https://example.org/home
-  Icon: https://example.org/icon
-  Keywords:
-    - {{ .ChartName }}
-  Maintainers:
-    - Email: john@example.com
-      Name: john
-      URL: https://example.com/john
-  Name: {{ .ChartName }}
-  Sources:
-    - https://example.org/{{ .ChartName }}
-  Tags: {{ .ChartName }}
-  Type: application
-  Version: 0.1.0
-Files:
-  myfile: "content"
-Release:
-  IsInstall: false
-  IsUpgrade: true
-  Name: {{ .ChartName }}
-  Namespace: {{ .ChartName }}
-  Revision: 2
-  Service: Helm
-Values:
-{{- if .IsWerfChart }}
-  global:
-    werf:
-      name: myapp
-      version: v2.35.0
-      repo: example.org/mycompany/myapp
-      env: production
-      images:
-        app:
-          registry: example.org
-          namespace: mycompany
-          name: myapp
-          tag: a1b2c3d4-1234567890
-          digest: "sha256:abcdef1234567890"
-          tag_digest: "a1b2c3d4-1234567890@sha256:abcdef1234567890"
-          image: example.org/mycompany/myapp
-          repository: mycompany/myapp
-          ref: "example.org/mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
-          ref_tag: "example.org/mycompany/myapp:a1b2c3d4-1234567890"
-          repository_ref: "mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
-          repository_tag: "mycompany/myapp:a1b2c3d4-1234567890"
-          name_ref: "myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
-          name_tag: "myapp:a1b2c3d4-1234567890"
-      commit:
-        date:
-          human: "2025-01-15 12:00:00 +0000"
-          unix: 1736942400
-        hash: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
-{{- end }}
-  image:
-    repository: nginx
-    tag: latest
-  replicaCount: 1
-  service:
-    enabled: true
-    port: 80
-    type: ClusterIP
-`
-	packageJSONTmpl = `{
-  "name": "{{ .PackageName }}",
-  "version": "0.0.0",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "nelm-chart-ts dev --input-file input.example.yaml",
-    "typecheck": "tsc"
-  },
-  "dependencies": {
-    "@nelm/chart-ts-sdk": "^0.2.0"
-  },
-  "devDependencies": {
-    "typescript": "~6.0.3"
-  }
-}
-`
-	serviceTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
-import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
-
-export function newService($: {{ .RenderContextType }}): object {
-  return {
-    apiVersion: 'v1',
-    kind: 'Service',
-    metadata: {
-      name: getFullname($),
-      labels: getLabels($),
-    },
-    spec: {
-      type: $.Values.service?.type ?? 'ClusterIP',
-      ports: [
-        {
-          port: $.Values.service?.port ?? 80,
-          targetPort: 'http',
-        },
-      ],
-      selector: getSelectorLabels($),
-    },
-  };
-}
-`
-	tsconfigJSONTmpl = `{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "types": []
-  },
-  "include": ["src"]
-}
-`
 	valuesYamlContent = `replicaCount: 1
 
 image:
@@ -263,4 +28,12 @@ service:
   type: ClusterIP
   port: 80
 `
+)
+
+var (
+	//go:embed scaffold/package.json scaffold/tsconfig*.json scaffold/input.example.yaml scaffold/src/*.ts
+	scaffoldFiles embed.FS
+
+	//go:embed scaffold/values_werf.yaml
+	scaffoldExtraValues string
 )

@@ -11,6 +11,8 @@
 /go.work.sum
 node_modules/
 !/pkg/ts/testdata/**/node_modules/
+/pkg/ts/scaffold/.dev/
+/pkg/ts/scaffold/package-lock.json
 /.opencode/
 /.sisyphus
 

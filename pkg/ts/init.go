@@ -1,13 +1,15 @@
 package ts
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
+
+	"github.com/goccy/go-yaml"
+	"github.com/tidwall/sjson"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -25,13 +27,6 @@ var chartTSIgnoreEntries = []string{
 }
 
 type InitTSBoilerplateOptions struct {
-	RenderContextType string
-}
-
-type initTmplData struct {
-	ChartName         string
-	IsWerfChart       bool
-	PackageName       string
 	RenderContextType string
 }
 
@@ -72,7 +67,6 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts InitTSBoilerplateOptions) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
-	srcDir := filepath.Join(tsDir, "src")
 
 	if _, err := os.Stat(tsDir); err == nil {
 		return fmt.Errorf("init ts boilerplate: typescript directory already exists: %s", tsDir)
@@ -85,41 +79,48 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 		ctxType = opts.RenderContextType
 	}
 
-	data := initTmplData{
-		ChartName:         chartName,
-		IsWerfChart:       ctxType == common.TSWerfRenderContextType,
-		PackageName:       strings.ToLower(chartName) + "-ts",
-		RenderContextType: ctxType,
-	}
-
-	files := []struct {
-		tmpl string
-		path string
-	}{
-		{tmpl: indexTSTmpl, path: filepath.Join(srcDir, "index.ts")},
-		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
-		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
-		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
-		{tmpl: packageJSONTmpl, path: filepath.Join(tsDir, "package.json")},
-		{tmpl: tsconfigJSONTmpl, path: filepath.Join(tsDir, "tsconfig.json")},
-		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
-	}
-
-	if err := os.MkdirAll(srcDir, 0o755); err != nil {
-		return fmt.Errorf("create directory %s: %w", srcDir, err)
-	}
-
-	for _, f := range files {
-		content, err := renderTemplate(f.tmpl, data)
+	if err := fs.WalkDir(scaffoldFiles, "scaffold", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("render template for %s: %w", f.path, err)
+			return fmt.Errorf("walk scaffold: %w", err)
 		}
 
-		if err := os.WriteFile(f.path, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", f.path, err)
+		if entry.IsDir() {
+			return nil
 		}
 
-		log.Default.Debug(ctx, "Created %s", f.path)
+		content, err := scaffoldFiles.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read scaffold file %s: %w", path, err)
+		}
+
+		relPath := strings.TrimPrefix(path, "scaffold/")
+		switch relPath {
+		case "package.json":
+			content, err = sjson.SetBytes(content, "name", strings.ToLower(chartName)+"-ts")
+		case "src/context.ts":
+			content = []byte(fmt.Sprintf("export type { %s as ChartContext } from '@nelm/chart-ts-sdk';\n", ctxType))
+		case "input.example.yaml":
+			content, err = scaffoldInput(content, chartName, ctxType)
+		}
+
+		if err != nil {
+			return fmt.Errorf("customize scaffold file %s: %w", relPath, err)
+		}
+
+		destPath := filepath.Join(tsDir, filepath.FromSlash(relPath))
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return fmt.Errorf("create directory for %s: %w", destPath, err)
+		}
+
+		if err := os.WriteFile(destPath, content, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", destPath, err)
+		}
+
+		log.Default.Debug(ctx, "Created %s", destPath)
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("copy scaffold: %w", err)
 	}
 
 	return nil
@@ -215,16 +216,46 @@ func fileExists(path string) (bool, error) {
 	return false, fmt.Errorf("stat %s: %w", path, err)
 }
 
-func renderTemplate(tmplStr string, data initTmplData) (string, error) {
-	t, err := template.New("").Parse(tmplStr)
+func scaffoldInput(content []byte, chartName, contextType string) ([]byte, error) {
+	content, err := yaml.YAMLToJSON(content)
 	if err != nil {
-		return "", fmt.Errorf("parse template: %w", err)
+		return nil, fmt.Errorf("convert input example to JSON: %w", err)
 	}
 
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("execute template: %w", err)
+	for _, replacement := range []struct {
+		path  string
+		value string
+	}{
+		{path: "Chart.Condition", value: chartName + ".enabled"},
+		{path: "Chart.Description", value: chartName + " description"},
+		{path: "Chart.Keywords.0", value: chartName},
+		{path: "Chart.Name", value: chartName},
+		{path: "Chart.Sources.0", value: "https://example.org/" + chartName},
+		{path: "Chart.Tags", value: chartName},
+		{path: "Release.Name", value: chartName},
+		{path: "Release.Namespace", value: chartName},
+	} {
+		content, err = sjson.SetBytes(content, replacement.path, replacement.value)
+		if err != nil {
+			return nil, fmt.Errorf("replace %s: %w", replacement.path, err)
+		}
 	}
 
-	return buf.String(), nil
+	if contextType == common.TSWerfRenderContextType {
+		extraValues, err := yaml.YAMLToJSON([]byte(scaffoldExtraValues))
+		if err != nil {
+			return nil, fmt.Errorf("convert extra values to JSON: %w", err)
+		}
+
+		if content, err = sjson.SetRawBytes(content, "Values.global", extraValues); err != nil {
+			return nil, fmt.Errorf("set extra values: %w", err)
+		}
+	}
+
+	content, err = yaml.JSONToYAML(content)
+	if err != nil {
+		return nil, fmt.Errorf("convert input example to YAML: %w", err)
+	}
+
+	return content, nil
 }

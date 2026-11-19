@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -416,9 +417,13 @@ func renderedConfigMapNames(result *RenderChartResult) []string {
 func requireTestNode(t *testing.T) string {
 	t.Helper()
 
-	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
-	if nodePath == "" {
-		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
+	if nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH"); nodePath != "" {
+		return nodePath
+	}
+
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skipf("Node.js is not available in PATH: %s", err)
 	}
 
 	return nodePath

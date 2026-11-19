@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -96,6 +97,20 @@ type stubRun struct {
 	autoPin string
 	canary  string
 	dir     string
+}
+
+func checkScaffoldEditor(t *testing.T, tsDir string) {
+	t.Helper()
+
+	scriptPath, err := filepath.Abs(filepath.Join("testdata", "check-editor.mjs"))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, requireTestNode(t), scriptPath, tsDir) //nolint:gosec // G204: test-selected Node runs a repository-owned script
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", output)
 }
 
 // runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr lines
@@ -247,14 +262,16 @@ func requireStubNotRun(t *testing.T, binDir, name string) {
 	require.NoFileExists(t, filepath.Join(binDir, name+".args"), "%s must not be run", name)
 }
 
-// requireTestNode returns the Node.js to run the tests that need a real one with, taken from
-// NELM_TEST_NODE_BINARY_PATH, and skips the test if it is not set.
 func requireTestNode(t *testing.T) string {
 	t.Helper()
 
-	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
-	if nodePath == "" {
-		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
+	if nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH"); nodePath != "" {
+		return nodePath
+	}
+
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skipf("Node.js is not available in PATH: %s", err)
 	}
 
 	return nodePath
