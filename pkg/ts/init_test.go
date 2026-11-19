@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evanw/esbuild/pkg/api"
 	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -499,37 +498,13 @@ func TestInitTSBoilerplateInput(t *testing.T) {
 
 			assert.NotContains(t, string(content), "example-chart")
 
-			inputJSON, err := yaml.YAMLToJSON(content)
-			require.NoError(t, err)
-
-			var inputValues struct {
-				Values map[string]json.RawMessage `json:"Values"`
-			}
-			require.NoError(t, json.Unmarshal(inputJSON, &inputValues))
-
 			assert.NoFileExists(t, filepath.Join(chartPath, "ts", "src", "values.test.json"))
 
 			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "deployment.test.ts"))
 			require.NoError(t, err)
-
-			_, testValues, found := strings.Cut(string(content), "const defaultValues = ")
-			require.True(t, found)
-			testValues, _, found = strings.Cut(testValues, ";\n")
-			require.True(t, found)
-
-			expected := "{}"
-			if contextType == "WerfRenderContext" {
-				expected = fmt.Sprintf(`{"global":%s}`, inputValues.Values["global"])
-
-				assert.Contains(t, testValues, "name: 'myapp'")
-			}
-
-			original := api.Transform("const values = "+expected+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
-			require.Empty(t, original.Errors)
-
-			formatted := api.Transform("const values = "+testValues+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
-			require.Empty(t, formatted.Errors)
-			assert.Equal(t, string(original.Code), string(formatted.Code))
+			source, err := os.ReadFile(filepath.Join("scaffold", "src", "deployment.test.ts"))
+			require.NoError(t, err)
+			assert.Equal(t, string(source), string(content))
 		})
 	}
 }

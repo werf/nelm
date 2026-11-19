@@ -2,12 +2,10 @@ package ts
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -103,21 +101,6 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 			content = []byte(fmt.Sprintf("export type { %s as ChartContext } from '@nelm/chart-ts-sdk';\n", ctxType))
 		case "input.example.yaml":
 			content, err = scaffoldInput(content, chartName, ctxType)
-		case "src/deployment.test.ts":
-			if ctxType == common.TSWerfRenderContextType {
-				extraValues, err := yaml.YAMLToJSON([]byte(scaffoldExtraValues))
-				if err != nil {
-					return fmt.Errorf("convert extra test values to JSON: %w", err)
-				}
-
-				testValues, err := json.MarshalIndent(map[string]json.RawMessage{"global": extraValues}, "", "  ")
-				if err != nil {
-					return fmt.Errorf("format extra test values: %w", err)
-				}
-
-				testValues = formatScaffoldTestValues(testValues)
-				content = []byte(strings.Replace(string(content), "const defaultValues = {};", fmt.Sprintf("const defaultValues = %s;", testValues), 1))
-			}
 		}
 
 		if err != nil {
@@ -231,18 +214,6 @@ func fileExists(path string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("stat %s: %w", path, err)
-}
-
-func formatScaffoldTestValues(content []byte) []byte {
-	return []byte(regexp.MustCompile(`"[A-Za-z_$][A-Za-z0-9_$]*":|"(?:[^"\\]|\\.)*"`).ReplaceAllStringFunc(string(content), func(value string) string {
-		if strings.HasSuffix(value, ":") {
-			return value[1:len(value)-2] + ":"
-		}
-
-		value = strings.ReplaceAll(value[1:len(value)-1], `\"`, `"`)
-
-		return "'" + strings.ReplaceAll(value, "'", `\'`) + "'"
-	}))
 }
 
 func scaffoldInput(content []byte, chartName, contextType string) ([]byte, error) {

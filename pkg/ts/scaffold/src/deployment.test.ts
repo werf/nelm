@@ -3,8 +3,6 @@ import { describe, it } from 'node:test';
 import type { ChartContext } from './context.ts';
 import { newDeployment } from './deployment.ts';
 
-const defaultValues = {};
-
 function newContext(values: Record<string, unknown>): ChartContext {
   return {
     Capabilities: {
@@ -43,7 +41,7 @@ function newContext(values: Record<string, unknown>): ChartContext {
       Service: 'Helm',
     },
     Runtime: {},
-    Values: { ...defaultValues, ...values },
+    Values: values as ChartContext['Values'],
   };
 }
 
