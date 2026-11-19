@@ -250,7 +250,7 @@ Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource
 * The `werf.io/delete-policy` annotation. Inspired by `helm.sh/hook-delete-policy`, but works for any resource. Set `before-creation` to always recreate the resource, `before-creation-if-immutable` to only recreate if the resource is immutable, `succeeded` or `failed` to delete the resource on success or failure. 
 * The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
 * The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
-* The `werf.io/delete-on` annotation. Delete the resource removed from the Chart in a pre/main/post stage of install/upgrade/rollback/uninstall, e.g. only after the new resources are deployed.
+* The `werf.io/delete-on` annotation. Delete resources removed from the chart after the selected pre/main/post deployment stage. Also applies to release uninstall.
 * The `werf.io/resource-policy` annotation. Inspired by `helm.sh/resource-policy`, but adds more options: set `skip-create`, `skip-update`, `skip-recreate` or `skip-delete` to skip the corresponding operation.
 * The `werf.io/triggers-release` annotation. Set `false` to never create a new release only because of changes in this resource, e.g. to keep a Job with `werf.io/delete-policy: before-creation` from breaking skipping of up-to-date releases.
 
