@@ -5,10 +5,39 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormatScaffoldTestValues(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"empty", `{}`, `{}`},
+		{"objects", `{"global":{"name":"myapp","enabled":true,"count":2,"empty":null}}`, `{global:{name:'myapp',enabled:true,count:2,empty:null}}`},
+		{"keys", `{"$name":"app","_tag":"v1","with-dash":"value","a\"b":"value","a'b":"value"}`, `{$name:'app',_tag:'v1','with-dash':'value','a"b':'value','a\'b':'value'}`},
+		{"quotes", `{"value":"it's \"quoted\""}`, `{value:'it\'s "quoted"'}`},
+		{"backslashes", `{"value":"C:\\it's\\\"quoted\""}`, `{value:'C:\\it\'s\\"quoted"'}`},
+		{"escapes", `{"value":"line\nnext\t\u2028\u2029"}`, `{value:'line\nnext\t\u2028\u2029'}`},
+		{"arrays", `{"values":["a","b",true,false,null,1]}`, `{values:['a','b',true,false,null,1]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := formatScaffoldTestValues([]byte(test.input))
+			assert.Equal(t, test.expected, string(result))
+
+			original := api.Transform("const values = "+test.input+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
+			require.Empty(t, original.Errors)
+
+			formatted := api.Transform("const values = "+string(result)+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
+			require.Empty(t, formatted.Errors)
+			assert.Equal(t, string(original.Code), string(formatted.Code))
+		})
+	}
+}
 
 func TestScaffoldInputPreservesValuesAndKeyOrder(t *testing.T) {
 	content, err := os.ReadFile("testdata/scaffold-input.yaml")

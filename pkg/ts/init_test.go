@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -498,26 +499,37 @@ func TestInitTSBoilerplateInput(t *testing.T) {
 
 			assert.NotContains(t, string(content), "example-chart")
 
+			inputJSON, err := yaml.YAMLToJSON(content)
+			require.NoError(t, err)
+
+			var inputValues struct {
+				Values map[string]json.RawMessage `json:"Values"`
+			}
+			require.NoError(t, json.Unmarshal(inputJSON, &inputValues))
+
 			assert.NoFileExists(t, filepath.Join(chartPath, "ts", "src", "values.test.json"))
 
 			content, err = os.ReadFile(filepath.Join(chartPath, "ts", "src", "deployment.test.ts"))
 			require.NoError(t, err)
 
-			_, testValuesJSON, found := strings.Cut(string(content), "const defaultValues = ")
+			_, testValues, found := strings.Cut(string(content), "const defaultValues = ")
 			require.True(t, found)
-			testValuesJSON, _, found = strings.Cut(testValuesJSON, ";\n")
+			testValues, _, found = strings.Cut(testValues, ";\n")
 			require.True(t, found)
 
-			var testValues map[string]any
-			require.NoError(t, json.Unmarshal([]byte(testValuesJSON), &testValues))
-
+			expected := "{}"
 			if contextType == "WerfRenderContext" {
-				require.Contains(t, testValues, "global")
-				global := testValues["global"].(map[string]any)
-				assert.Equal(t, "myapp", global["werf"].(map[string]any)["name"])
-			} else {
-				assert.Empty(t, testValues)
+				expected = fmt.Sprintf(`{"global":%s}`, inputValues.Values["global"])
+
+				assert.Contains(t, testValues, "name: 'myapp'")
 			}
+
+			original := api.Transform("const values = "+expected+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
+			require.Empty(t, original.Errors)
+
+			formatted := api.Transform("const values = "+testValues+";", api.TransformOptions{Loader: api.LoaderTS, MinifySyntax: true, MinifyWhitespace: true})
+			require.Empty(t, formatted.Errors)
+			assert.Equal(t, string(original.Code), string(formatted.Code))
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -114,6 +115,7 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 					return fmt.Errorf("format extra test values: %w", err)
 				}
 
+				testValues = formatScaffoldTestValues(testValues)
 				content = []byte(strings.Replace(string(content), "const defaultValues = {};", fmt.Sprintf("const defaultValues = %s;", testValues), 1))
 			}
 		}
@@ -139,6 +141,18 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 	}
 
 	return nil
+}
+
+func formatScaffoldTestValues(content []byte) []byte {
+	return []byte(regexp.MustCompile(`"[A-Za-z_$][A-Za-z0-9_$]*":|"(?:[^"\\]|\\.)*"`).ReplaceAllStringFunc(string(content), func(value string) string {
+		if strings.HasSuffix(value, ":") {
+			return value[1:len(value)-2] + ":"
+		}
+
+		value = strings.ReplaceAll(value[1:len(value)-1], `\"`, `"`)
+
+		return "'" + strings.ReplaceAll(value, "'", `\'`) + "'"
+	}))
 }
 
 func ensureValuesFile(ctx context.Context, chartPath string) error {
