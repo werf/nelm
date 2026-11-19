@@ -17,13 +17,13 @@ func TestFormatScaffoldTestValues(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"empty", `{}`, `{}`},
-		{"objects", `{"global":{"name":"myapp","enabled":true,"count":2,"empty":null}}`, `{global:{name:'myapp',enabled:true,count:2,empty:null}}`},
-		{"keys", `{"$name":"app","_tag":"v1","with-dash":"value","a\"b":"value","a'b":"value"}`, `{$name:'app',_tag:'v1','with-dash':'value','a"b':'value','a\'b':'value'}`},
-		{"quotes", `{"value":"it's \"quoted\""}`, `{value:'it\'s "quoted"'}`},
-		{"backslashes", `{"value":"C:\\it's\\\"quoted\""}`, `{value:'C:\\it\'s\\"quoted"'}`},
-		{"escapes", `{"value":"line\nnext\t\u2028\u2029"}`, `{value:'line\nnext\t\u2028\u2029'}`},
-		{"arrays", `{"values":["a","b",true,false,null,1]}`, `{values:['a','b',true,false,null,1]}`},
+		{name: "empty", input: `{}`, expected: `{}`},
+		{name: "objects", input: `{"global":{"name":"myapp","enabled":true,"count":2,"empty":null}}`, expected: `{global:{name:'myapp',enabled:true,count:2,empty:null}}`},
+		{name: "keys", input: `{"$name":"app","_tag":"v1","with-dash":"value","a\"b":"value","a'b":"value"}`, expected: `{$name:'app',_tag:'v1','with-dash':'value','a"b':'value','a\'b':'value'}`},
+		{name: "quotes", input: `{"value":"it's \"quoted\""}`, expected: `{value:'it\'s "quoted"'}`},
+		{name: "backslashes", input: `{"value":"C:\\it's\\\"quoted\""}`, expected: `{value:'C:\\it\'s\\"quoted"'}`},
+		{name: "escapes", input: `{"value":"line\nnext\t\u2028\u2029"}`, expected: `{value:'line\nnext\t\u2028\u2029'}`},
+		{name: "arrays", input: `{"values":["a","b",true,false,null,1]}`, expected: `{values:['a','b',true,false,null,1]}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := formatScaffoldTestValues([]byte(test.input))
