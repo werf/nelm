@@ -542,7 +542,7 @@ Default:
 
 ### `werf.io/delete-on` annotation
 
-Sets the stage in which the resource is deleted after it was removed from the Chart (or when the release is uninstalled), separately for each deploy type. Deletion runs after the corresponding pre, main or post deployment stage completes. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
+Sets the deletion stage separately for each deploy type. Applies when a resource is removed from the chart or the release is uninstalled. Deletion runs after the corresponding pre, main or post deployment stage completes. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
