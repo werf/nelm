@@ -4,7 +4,6 @@
     "types": [
       "node"
     ],
-    "resolveJsonModule": true,
     "tsBuildInfoFile": "./.dev/tsconfig.test.tsbuildinfo"
   },
   "include": [

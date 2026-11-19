@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ChartContext } from './context.ts';
 import { newDeployment } from './deployment.ts';
-import defaultValues from './values.test.json' with { type: 'json' };
 
 function newContext(values: Record<string, unknown>): ChartContext {
   return {
@@ -42,7 +41,7 @@ function newContext(values: Record<string, unknown>): ChartContext {
       Service: 'Helm',
     },
     Runtime: {},
-    Values: { ...defaultValues, ...values },
+    Values: values as ChartContext['Values'],
   };
 }
 
