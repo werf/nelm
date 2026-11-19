@@ -103,7 +103,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 
 ## Install
 
-Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
+Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases). Upgrading from Nelm v1? See the [migration guide](docs/migration-v1-to-v2.md).
 
 Nelm is also published as container images to `registry.werf.io/werf/nelm` and `ghcr.io/werf/nelm`.
 
