@@ -64,6 +64,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/delete-dependency-<id>` annotation](#werfiodelete-dependency-id-annotation)
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
+  - [`werf.io/delete-on` annotation](#werfiodelete-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
   - [`werf.io/resource-policy` annotation](#werfioresource-policy-annotation)
   - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
@@ -249,6 +250,7 @@ Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource
 * The `werf.io/delete-policy` annotation. Inspired by `helm.sh/hook-delete-policy`, but works for any resource. Set `before-creation` to always recreate the resource, `before-creation-if-immutable` to only recreate if the resource is immutable, `succeeded` or `failed` to delete the resource on success or failure. 
 * The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
 * The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
+* The `werf.io/delete-on` annotation. Delete resources removed from the chart after the selected pre/main/post deployment stage. Also applies to release uninstall.
 * The `werf.io/resource-policy` annotation. Inspired by `helm.sh/resource-policy`, but adds more options: set `skip-create`, `skip-update`, `skip-recreate` or `skip-delete` to skip the corresponding operation.
 * The `werf.io/triggers-release` annotation. Set `false` to never create a new release only because of changes in this resource, e.g. to keep a Job with `werf.io/delete-policy: before-creation` from breaking skipping of up-to-date releases.
 
@@ -536,6 +538,23 @@ werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade
 Default:
 ```
 "install,upgrade,rollback" for general resources, populated from "helm.sh/hook" for hooks
+```
+
+### `werf.io/delete-on` annotation
+
+Sets the deletion stage separately for each deploy type. Applies when a resource is removed from the chart or the release is uninstalled. Deletion runs after the corresponding pre, main or post deployment stage completes. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
+
+Example:
+```yaml
+werf.io/delete-on: post-upgrade,post-rollback
+```
+Format:
+```
+werf.io/delete-on: [pre-install|install|post-install][,pre-upgrade|upgrade|post-upgrade][,pre-rollback|rollback|post-rollback][,pre-delete|delete|post-delete]
+```
+Default:
+```
+before everything else on install, upgrade and rollback, "delete" on uninstall
 ```
 
 ### `werf.io/delete-policy` annotation 

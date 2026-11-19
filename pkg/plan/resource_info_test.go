@@ -257,6 +257,173 @@ func (s *ResourceInfoSuite) TestBuildDeletableResourceInfo() {
 				s.Require().NoError(err)
 			},
 		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.Stage = common.StagePostUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnInstall: common.StagePreUninstall,
+					common.InstallOnUpgrade: common.StagePostUninstall,
+				}
+
+				return localRes, common.DeployTypeUpgrade
+			},
+			name: `for existing resource with delete stage for upgrade, upgrade deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.Stage = common.StagePrePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnUpgrade: common.StagePostUninstall,
+				}
+
+				return localRes, common.DeployTypeRollback
+			},
+			name: `for existing resource without delete stage for rollback, rollback deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.Stage = common.StagePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnInstall: common.StagePreUninstall,
+				}
+
+				return localRes, common.DeployTypeInstall
+			},
+			name: `for existing resource with delete stage for install, install deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.Stage = common.StagePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnDelete: common.StagePreUninstall,
+				}
+
+				return localRes, common.DeployTypeUninstall
+			},
+			name: `for existing resource with delete stage for uninstall, uninstall deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace).Unstruct
+				info.MustTrackAbsence = false
+				info.Stage = common.StagePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnDelete: common.StagePreUninstall,
+				}
+
+				return localRes, common.DeployTypeUninstall
+			},
+			name: `for existing PersistentVolumeClaim with pre-delete stage, uninstall deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolume", s.releaseName, s.releaseNamespace).Unstruct
+				info.Stage = common.StagePostUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := storageDeletableResource("PersistentVolume", s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnDelete: common.StagePostUninstall,
+				}
+
+				return localRes, common.DeployTypeUninstall
+			},
+			name: `for existing PersistentVolume with post-delete stage, uninstall deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolume", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace).Unstruct
+				info.MustTrackAbsence = false
+				info.Stage = common.StagePostUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				localRes := storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace)
+				localRes.DeleteStages = map[common.On]common.Stage{
+					common.InstallOnUpgrade: common.StagePostUninstall,
+				}
+
+				return localRes, common.DeployTypeUpgrade
+			},
+			name: `for existing PersistentVolumeClaim with post-upgrade stage, upgrade deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
 	}
 
 	for _, tc := range testCases {

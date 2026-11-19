@@ -372,11 +372,23 @@ func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, 
 }
 
 func buildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
-	var stage common.Stage
-	if deployType == common.DeployTypeUninstall {
-		stage = common.StageUninstall
-	} else {
-		stage = common.StagePrePreUninstall
+	var on common.On
+	switch deployType {
+	case common.DeployTypeInitial, common.DeployTypeInstall:
+		on = common.InstallOnInstall
+	case common.DeployTypeUpgrade:
+		on = common.InstallOnUpgrade
+	case common.DeployTypeRollback:
+		on = common.InstallOnRollback
+	case common.DeployTypeUninstall:
+		on = common.InstallOnDelete
+	default:
+		panic("unexpected deploy type")
+	}
+
+	stage := lo.Ternary(deployType == common.DeployTypeUninstall, common.StageUninstall, common.StagePrePreUninstall)
+	if delStage, found := localRes.DeleteStages[on]; found {
+		stage = delStage
 	}
 
 	noDeleteInfo := &DeletableResourceInfo{
@@ -420,11 +432,12 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		GetResult:     getObj,
 		LocalResource: localRes,
 		MustDelete:    true,
-		// Resources removed from the chart are deleted before install, but a PVC stays Terminating
-		// while Pods use it (and a PV while it is bound), and those Pods are only replaced during
-		// install. Waiting for their absence here would deadlock the release.
-		MustTrackAbsence: deployType == common.DeployTypeUninstall || !isPersistentVolumeOrClaim(localRes.GroupVersionKind.GroupKind()),
-		Stage:            stage,
+		// A PVC stays Terminating while Pods use it (and a PV while it is bound). On install, upgrade
+		// and rollback, or before the uninstall stage of uninstall, these Pods might still be running,
+		// so waiting for absence could deadlock the release.
+		MustTrackAbsence: !isPersistentVolumeOrClaim(localRes.GroupVersionKind.GroupKind()) ||
+			(deployType == common.DeployTypeUninstall && !common.StagesSortHandler(stage, common.StageUninstall)),
+		Stage: stage,
 	}, nil
 }
 

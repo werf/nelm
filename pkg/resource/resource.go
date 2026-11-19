@@ -100,6 +100,10 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate deploy stage: %w", err)
 	}
 
+	if err := validateDeleteOn(res.ResourceMeta); err != nil {
+		return nil, fmt.Errorf("validate delete stage: %w", err)
+	}
+
 	if err := validateOwnership(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate ownership: %w", err)
 	}
@@ -165,6 +169,7 @@ type DeletableResource struct {
 
 	AutoInternalDependencies []*Dependency
 	DeletePropagation        metav1.DeletionPropagation
+	DeleteStages             map[common.On]common.Stage
 	ManualDependencies       []*Dependency
 	Ownership                common.Ownership
 	ResourcePolicies         []common.ResourcePolicy
@@ -194,6 +199,11 @@ func NewDeletableResource(ctx context.Context, resourceSpec *spec.ResourceSpec, 
 		delPropagation = deletePropagation(resourceSpec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
+	var delStages map[common.On]common.Stage
+	if err := validateDeleteOn(resourceSpec.ResourceMeta); err == nil {
+		delStages = deleteStages(resourceSpec.ResourceMeta)
+	}
+
 	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
 		return resSpec.ResourceMeta
 	})
@@ -210,6 +220,7 @@ func NewDeletableResource(ctx context.Context, resourceSpec *spec.ResourceSpec, 
 		ResourceMeta:             resourceSpec.ResourceMeta,
 		AutoInternalDependencies: internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 		DeletePropagation:        delPropagation,
+		DeleteStages:             delStages,
 		ManualDependencies:       manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList),
 		Ownership:                owner,
 		ResourcePolicies:         policies,
