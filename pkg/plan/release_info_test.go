@@ -75,6 +75,27 @@ func TestBuildPlan_FailsStuckPendingRevisionOnlyInFinalStage(t *testing.T) {
 	assert.False(t, found, "a failed deploy must leave the stuck revision as is")
 }
 
+func TestBuildPlan_SupersedeIgnoresRevisionPrunedByHistoryLimit(t *testing.T) {
+	infos, err := BuildReleaseInfos(context.Background(), common.DeployTypeUpgrade, []helmrel.Accessor{
+		newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 1, helmreleasecommon.StatusDeployed),
+		newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 2, helmreleasecommon.StatusDeployed),
+	}, newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 3, helmreleasecommon.StatusPendingUpgrade))
+	require.NoError(t, err)
+
+	builtPlan, err := BuildPlan(context.Background(), nil, nil, infos, "test-ns", BuildPlanOptions{})
+	require.NoError(t, err)
+
+	for _, version := range []int{1, 2} {
+		supersedeOp, found := builtPlan.Operation(OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, releaseID("test-ns", "myrelease", version)))
+		require.True(t, found)
+
+		cfg, ok := supersedeOp.Config.(*OperationConfigUpdateRelease)
+		require.True(t, ok)
+		assert.Equal(t, helmreleasecommon.StatusSuperseded.String(), cfg.Release.Accessor.Status())
+		assert.True(t, cfg.IgnoreNotFound, "the history limit may prune the revision when the new one is created")
+	}
+}
+
 func TestBuildReleaseInfos_FailsStuckPendingRevisions(t *testing.T) {
 	for _, tt := range []struct {
 		deployType common.DeployType

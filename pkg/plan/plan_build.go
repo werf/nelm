@@ -854,7 +854,8 @@ func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: &release.VersionedRelease{Accessor: supersededRel},
+			IgnoreNotFound: true,
+			Release:        &release.VersionedRelease{Accessor: supersededRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(supersedeOp).Stage(common.StageFinal).Do())

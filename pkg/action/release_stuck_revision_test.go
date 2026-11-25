@@ -49,6 +49,31 @@ func TestReleaseInstall_AutoRollbackMarksStuckPendingRevisionsFailed(t *testing.
 	}, progressPhaseRevisionStatuses(t, ctx, api))
 }
 
+func TestReleaseInstall_DeployedRevisionPrunedByHistoryLimitDoesNotFailDeploy(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
+	addProgressPhaseRevisionWithStatus(t, api, 2, "", helmreleasestatus.StatusDeployed)
+
+	ctx := newStuckRevisionContext(t)
+
+	opts := newStuckRevisionInstallOptions(t, api)
+	opts.Chart = newStuckRevisionChart(t, api)
+	opts.ReleaseHistoryLimit = 2
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.updateMissingConfigMapNotFound = true
+	})
+
+	result, err := ReleaseInstall(ctx, "progress-release", "progress-ns", opts)
+	require.NoError(t, err)
+	assert.Equal(t, helmreleasestatus.StatusDeployed, result.Release.Status)
+
+	assert.Equal(t, map[int]helmreleasestatus.Status{
+		2: helmreleasestatus.StatusSuperseded,
+		3: helmreleasestatus.StatusDeployed,
+	}, progressPhaseRevisionStatuses(t, ctx, api))
+}
+
 func TestReleaseInstall_FailureKeepsStuckPendingRevisions(t *testing.T) {
 	api := newProgressPhasesAPI(t)
 	addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
