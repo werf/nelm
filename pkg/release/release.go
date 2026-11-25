@@ -357,12 +357,27 @@ func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNa
 }
 
 func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
-	return spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
+	cleaned := spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
 		CleanManagedFields:      true,
 		CleanReleaseAnnosLabels: true,
 		CleanRuntimeData:        true,
 		CleanWerfIoRuntimeAnnos: true,
 	})
+
+	// Empty or null annotations and labels must compare equal to absent ones: resources rebuilt from
+	// a stored release (e.g. on rollback) get empty maps instead of none, and cleaning above can empty them too.
+	for _, field := range []string{"annotations", "labels"} {
+		value, found, err := unstructured.NestedFieldNoCopy(cleaned.Object, "metadata", field)
+		if err != nil || !found {
+			continue
+		}
+
+		if m, isMap := value.(map[string]interface{}); value == nil || isMap && len(m) == 0 {
+			unstructured.RemoveNestedField(cleaned.Object, "metadata", field)
+		}
+	}
+
+	return cleaned
 }
 
 // Values of a stored release are decoded from JSON (numbers become float64), while fresh values keep
