@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -311,6 +312,52 @@ data:
 			expectedUpToDate: false,
 			expectedReason:   release.ReleaseOutdatedReasonManifestsChanged,
 		},
+		{
+			name: "empty-or-null-metadata-maps-equal-absent",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-cm\n  annotations: {}\n  labels: null\ndata:\n  key: value1\n"
+
+				return r
+			}(),
+			newRel:           baseNewRel(),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name: "label-changed",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-cm\n  labels:\n    tier: blue\ndata:\n  key: value1\n"
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-cm\n  labels:\n    tier: green\ndata:\n  key: value1\n"
+
+				return r
+			}(),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonManifestsChanged,
+		},
+		{
+			name: "label-changed-next-to-invalid-label",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-cm\n  labels:\n    tier: blue\n    build: 1\ndata:\n  key: value1\n"
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-cm\n  labels:\n    tier: green\n    build: 1\ndata:\n  key: value1\n"
+
+				return r
+			}(),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonManifestsChanged,
+		},
 	}
 
 	accessor := func(t *testing.T, rel *helmrelease.Release) helmrel.Accessor {
@@ -404,6 +451,98 @@ func TestNewRelease_PreservesInfoAnnotations(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestReleaseToResourceSpecs_RollbackToSameReleaseIsUpToDate(t *testing.T) {
+	tests := []struct {
+		name     string
+		manifest string
+		storeAs  common.StoreAs
+	}{
+		{
+			name: "no annotations and labels",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-cm
+data:
+  key: value
+`,
+		},
+		{
+			name: "empty annotations and labels",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-cm
+  annotations: {}
+  labels: {}
+data:
+  key: value
+`,
+		},
+		{
+			name: "annotations without labels",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-cm
+  annotations:
+    key: value
+data:
+  key: value
+`,
+		},
+		{
+			name: "hook without labels",
+			manifest: `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-cm
+  annotations:
+    helm.sh/hook: pre-install
+data:
+  key: value
+`,
+			storeAs: common.StoreAsHook,
+		},
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(&v2chart.Chart{Metadata: &v2chart.Metadata{
+		Name: "mychart", Version: "1.0.0", APIVersion: v2chart.APIVersionV2,
+	}})
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := t.Context()
+
+			res, err := spec.NewResourceSpecFromManifest(ctx, tt.manifest, "myns", spec.ResourceSpecOptions{
+				FilePath: "templates/cm.yaml",
+				StoreAs:  lo.Ternary(tt.storeAs == "", common.StoreAsRegular, tt.storeAs),
+			})
+			require.NoError(t, err)
+
+			deployedRel, err := release.NewRelease("myrelease", "myns", 1, common.DeployTypeInstall, []*spec.ResourceSpec{res}, chartAccessor, map[string]any{}, release.ReleaseOptions{})
+			require.NoError(t, err)
+			deployedRel.SetStatus(helmreleasecommon.StatusDeployed)
+
+			rollbackResources, err := release.ReleaseToResourceSpecs(ctx, deployedRel, "myns")
+			require.NoError(t, err)
+
+			rollbackRel, err := release.NewRelease("myrelease", "myns", 2, common.DeployTypeRollback, rollbackResources, chartAccessor, map[string]any{}, release.ReleaseOptions{})
+			require.NoError(t, err)
+			rollbackRel.SetStatus(helmreleasecommon.StatusDeployed)
+
+			result, err := release.IsReleaseUpToDate(deployedRel, rollbackRel)
+			require.NoError(t, err)
+			assert.True(t, result.UpToDate, result.Reason)
+
+			result, err = release.IsReleaseUpToDate(rollbackRel, deployedRel)
+			require.NoError(t, err)
+			assert.True(t, result.UpToDate, result.Reason)
 		})
 	}
 }
