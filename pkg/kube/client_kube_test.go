@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -354,7 +353,13 @@ func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			dynamicClient.ClearActions()
+
 			obj, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+
+			require.Len(t, dynamicClient.Actions(), 1)
+			assert.Equal(t, "get", dynamicClient.Actions()[0].GetVerb())
+
 			if tc.wantData == "" {
 				require.True(t, IsNotFoundErr(err), "want NotFound, got %v", err)
 
@@ -468,21 +473,4 @@ func newTestKubeClient(succeedAfterResets int) (*KubeClient, *testCachedDiscover
 	client.mapperNoMatchRetryInterval = time.Millisecond
 
 	return client, discoveryClient, mapper
-}
-
-func newTestKubeClientWithConfigMap() (*KubeClient, *dynfake.FakeDynamicClient, *spec.ResourceSpec) {
-	client, _, _ := newTestKubeClient(0)
-	dynamicClient := dynfake.NewSimpleDynamicClient(scheme.Scheme, &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "cm", Namespace: "default"},
-		Data:       map[string]string{"key": "value"},
-	})
-	client.dynamicClient = dynamicClient
-
-	resSpec := spec.NewResourceSpec(&unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "v1",
-		"kind":       "ConfigMap",
-		"metadata":   map[string]interface{}{"name": "cm", "namespace": "default"},
-	}}, "default", spec.ResourceSpecOptions{})
-
-	return client, dynamicClient, resSpec
 }
