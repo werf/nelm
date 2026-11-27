@@ -20,6 +20,7 @@ func TestReleaseInstall_AutoRollbackAfterFailedApply(t *testing.T) {
 	api.state.RWTransaction(func(s *progressPhasesAPIState) {
 		s.allowApply = true
 		s.failConfigMaps = map[string]bool{"progress-resource": true}
+		s.failedApplyPersists = true
 	})
 
 	chartPath := newProgressPhasesChart(t)
@@ -33,8 +34,7 @@ func TestReleaseInstall_AutoRollbackAfterFailedApply(t *testing.T) {
 	opts.AutoRollback = true
 
 	_, err := ReleaseInstall(ctx, "progress-release", "progress-ns", opts)
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "from client cache")
+	require.ErrorContains(t, err, `server-side apply resource "ConfigMap/progress-resource"`)
 
 	assert.Equal(t, map[int]helmreleasestatus.Status{
 		1: helmreleasestatus.StatusSuperseded,
@@ -43,6 +43,8 @@ func TestReleaseInstall_AutoRollbackAfterFailedApply(t *testing.T) {
 	}, progressPhaseRevisionStatuses(t, ctx, api))
 
 	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		require.Len(t, s.appliedConfigMaps, 1)
+		assert.Equal(t, "progress-resource", s.appliedConfigMaps[0].Name)
 		assert.Equal(t, map[string]string{"key": "value"}, s.configMaps["progress-resource"].Data)
 	})
 }

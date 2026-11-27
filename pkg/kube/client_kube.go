@@ -126,8 +126,7 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts
 	}
 
 	if err != nil {
-		// The object may or may not have changed, so the next cached Get must ask the API. Caching
-		// the error instead would fail everything that reads the resource afterwards, e.g. rollback.
+		// The object may or may not have changed, so the next cached Get must ask the API.
 		if !opts.DryRun {
 			c.clusterCache.Delete(resSpec.IDWithVersion())
 		}
@@ -254,9 +253,13 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opt
 
 	log.Default.Debug(ctx, "Deleting resource %q", resMeta.IDHuman())
 
-	if err := clientResource.Delete(ctx, resMeta.Name, metav1.DeleteOptions{
+	err := clientResource.Delete(ctx, resMeta.Name, metav1.DeleteOptions{
 		PropagationPolicy: lo.ToPtr(propagationPolicy),
-	}); err != nil {
+	})
+
+	c.clusterCache.Delete(resMeta.IDWithVersion())
+
+	if err != nil {
 		if IsNotFoundErr(err) {
 			log.Default.Debug(ctx, "Skipping deletion, not found resource %q", resMeta.IDHuman())
 
@@ -265,8 +268,6 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opt
 
 		return fmt.Errorf("delete resource %q: %w", resMeta.IDHuman(), err)
 	}
-
-	c.clusterCache.Delete(resMeta.IDWithVersion())
 
 	return nil
 }

@@ -179,7 +179,10 @@ type progressPhasesAPIState struct {
 	configMaps            map[string]corev1.ConfigMap
 	deleteNamespaceStatus int
 	// failConfigMaps are the names of the ConfigMaps whose next update or apply is forbidden.
-	failConfigMaps       map[string]bool
+	failConfigMaps map[string]bool
+	// failedApplyPersists makes a forbidden apply of failConfigMaps still store the ConfigMap, as
+	// when the response to a persisted write is lost.
+	failedApplyPersists  bool
 	namespaceDeleted     bool
 	requests             []string
 	retainNamespace      bool
@@ -347,15 +350,20 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 					cm.Namespace = "progress-ns"
 
 					if !dryRun {
+						cm.Kind, cm.APIVersion, cm.ResourceVersion = "ConfigMap", "v1", "1"
+
 						if s.failConfigMaps[key] {
 							delete(s.failConfigMaps, key)
+
+							if s.failedApplyPersists {
+								s.configMaps[key] = cm
+							}
 
 							status = http.StatusForbidden
 
 							break
 						}
 
-						cm.Kind, cm.APIVersion, cm.ResourceVersion = "ConfigMap", "v1", "1"
 						s.configMaps[key] = cm
 						s.appliedConfigMaps = append(s.appliedConfigMaps, cm)
 					}
