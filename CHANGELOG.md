@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.32.0](https://github.com/werf/nelm/compare/v1.31.3...v1.32.0) (2026-11-27)
+
+
+### Features
+
+* **chart:** refuse charts that require werf v3 or Nelm v2 ([#808](https://github.com/werf/nelm/issues/808)) ([0b61853](https://github.com/werf/nelm/commit/0b6185362de5b4842f68fc8b20bc9beabda85630))
+
+
+### Bug Fixes
+
+* do not report a just-updated Deployment ready before its rollout ([#844](https://github.com/werf/nelm/issues/844)) ([073b9c3](https://github.com/werf/nelm/commit/073b9c32947a7a57b257442ad3705d8f76c6eb71))
+
 ## [1.31.3](https://github.com/werf/nelm/compare/v1.31.2...v1.31.3) (2026-11-03)
 
 
