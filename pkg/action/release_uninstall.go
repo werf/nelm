@@ -453,8 +453,6 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}
 
-		executingPlan.Store(false)
-
 		if !opts.NoProgressTablePrint {
 			progressPrinter.Stop()
 			progressPrinter.Wait()
@@ -492,6 +490,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		printReport(ctx, report)
+
+		executingPlan.Store(false)
 
 		if opts.UninstallReportPath != "" {
 			if err := saveReport(opts.UninstallReportPath, report); err != nil {

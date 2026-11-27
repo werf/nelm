@@ -70,6 +70,8 @@ metadata:
 	secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
 )
 
+var _ io.Writer = (*blockingLogWriter)(nil)
+
 type latestReleaseListLoads struct {
 	errs      []error
 	revisions []release.Revision
@@ -431,6 +433,41 @@ type chartCopyTestImage struct {
 type chartCopyTestTarEntry struct {
 	Data []byte
 	Name string
+}
+
+// Blocks the first write that contains blockOn until releaseCh is closed.
+type blockingLogWriter struct {
+	blockOn   string
+	blockedCh chan struct{}
+	logs      *kdutil.Concurrent[*bytes.Buffer]
+	releaseCh chan struct{}
+}
+
+func (w *blockingLogWriter) String() string {
+	var s string
+
+	w.logs.RTransaction(func(buf *bytes.Buffer) {
+		s = buf.String()
+	})
+
+	return s
+}
+
+func (w *blockingLogWriter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte(w.blockOn)) {
+		select {
+		case w.blockedCh <- struct{}{}:
+		default:
+		}
+
+		<-w.releaseCh
+	}
+
+	w.logs.RWTransaction(func(buf *bytes.Buffer) {
+		lo.Must(buf.Write(p))
+	})
+
+	return len(p), nil
 }
 
 func newDeleteCandidatesInstallOptions(t *testing.T, api *progressPhasesAPI, manifest string) ReleaseInstallOptions {
