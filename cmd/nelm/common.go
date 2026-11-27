@@ -37,7 +37,8 @@ func cancelOnFirstSignal(ctx context.Context) context.Context {
 	go func() {
 		sig := <-signalCh
 		ctxCancelFn(fmt.Errorf("context canceled: received signal %q", sig.String()))
-		log.Default.Warn(ctx, "Received signal %q, canceling. Send it again to exit immediately", sig.String())
+
+		go log.Default.Warn(ctx, "Received signal %q, canceling. Send it again to exit immediately", sig.String())
 
 		sig = <-signalCh
 		os.Exit(128 + int(sig.(syscall.Signal)))

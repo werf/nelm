@@ -219,16 +219,20 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}()
 
 	if opts.Timeout == 0 {
-		return releaseInstall(ctx, ctxCancelFn, &atomic.Bool{}, releaseName, releaseNamespace, opts, reporter)
+		return releaseInstall(ctx, ctxCancelFn, context.WithoutCancel(ctx), &atomic.Bool{}, releaseName, releaseNamespace, opts, reporter)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+
+	// The failure plan and auto-rollback outlive the timeout, but not this function.
+	detachedCtx, detachedCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer detachedCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	executingPlan := &atomic.Bool{}
 
 	actionCh := make(chan *releaseInstallOutcome, 1)
 	go func() {
-		result, err := releaseInstall(ctx, ctxCancelFn, executingPlan, releaseName, releaseNamespace, opts, reporter)
+		result, err := releaseInstall(ctx, ctxCancelFn, detachedCtx, executingPlan, releaseName, releaseNamespace, opts, reporter)
 		actionCh <- &releaseInstallOutcome{err: err, result: result}
 	}()
 
@@ -252,7 +256,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 }
 
-func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseInstallOptions, reporter *plan.LegacyProgressReporter) (*ReleaseInstallResultV1, error) {
+func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, detachedCtx context.Context, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseInstallOptions, reporter *plan.LegacyProgressReporter) (*ReleaseInstallResultV1, error) {
 	var phaseReporter *plan.LegacyProgressReporter
 	if reporter != nil {
 		defer reporter.Stop(ctx)
@@ -787,10 +791,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, ex
 	executingPlan.Store(true)
 
 	if ctx.Err() != nil {
-		return nil, context.Cause(ctx)
+		return nil, fmt.Errorf("execute release install plan: %w", context.Cause(ctx))
 	}
 
-	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(detachedCtx)
 	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	watchErrCh := make(chan error, 1)
@@ -899,7 +903,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, ex
 	}
 
 	if reporter != nil {
-		reporter.ReportCheckpoint(trackingCtx)
+		reporter.ReportCheckpoint(ctx)
 	}
 
 	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {

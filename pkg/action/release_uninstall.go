@@ -120,16 +120,20 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}()
 
 	if opts.Timeout == 0 {
-		return releaseUninstall(ctx, ctxCancelFn, &atomic.Bool{}, releaseName, releaseNamespace, opts, reporter)
+		return releaseUninstall(ctx, ctxCancelFn, context.WithoutCancel(ctx), &atomic.Bool{}, releaseName, releaseNamespace, opts, reporter)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+
+	// The failure plan outlives the timeout, but not this function.
+	detachedCtx, detachedCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer detachedCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	executingPlan := &atomic.Bool{}
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseUninstall(ctx, ctxCancelFn, executingPlan, releaseName, releaseNamespace, opts, reporter)
+		actionCh <- releaseUninstall(ctx, ctxCancelFn, detachedCtx, executingPlan, releaseName, releaseNamespace, opts, reporter)
 	}()
 
 	select {
@@ -151,7 +155,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}
 }
 
-func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseUninstallOptions, reporter *plan.LegacyProgressReporter) error {
+func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, detachedCtx context.Context, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseUninstallOptions, reporter *plan.LegacyProgressReporter) error {
 	var phaseReporter *plan.LegacyProgressReporter
 	if reporter != nil {
 		defer reporter.Stop(ctx)
@@ -213,7 +217,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return nil
 	}
 
-	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(detachedCtx)
 	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	watchErrCh := make(chan error, 1)
@@ -379,7 +383,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		executingPlan.Store(true)
 
 		if ctx.Err() != nil {
-			return context.Cause(ctx)
+			return fmt.Errorf("execute release delete plan: %w", context.Cause(ctx))
 		}
 
 		taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
@@ -457,7 +461,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		if reporter != nil {
-			reporter.ReportCheckpoint(trackingCtx)
+			reporter.ReportCheckpoint(ctx)
 		}
 
 		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {

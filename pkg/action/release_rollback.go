@@ -111,17 +111,21 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
-		return releaseRollback(ctx, ctxCancelFn, &atomic.Bool{}, releaseName, releaseNamespace, opts)
+		return releaseRollback(ctx, ctxCancelFn, context.WithoutCancel(ctx), &atomic.Bool{}, releaseName, releaseNamespace, opts)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
+	// The failure plan outlives the timeout, but not this function.
+	detachedCtx, detachedCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer detachedCtxCancelFn(fmt.Errorf("context canceled: action finished"))
+
 	executingPlan := &atomic.Bool{}
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseRollback(ctx, ctxCancelFn, executingPlan, releaseName, releaseNamespace, opts)
+		actionCh <- releaseRollback(ctx, ctxCancelFn, detachedCtx, executingPlan, releaseName, releaseNamespace, opts)
 	}()
 
 	select {
@@ -143,7 +147,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	}
 }
 
-func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
+func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, detachedCtx context.Context, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home directory: %w", err)
@@ -455,10 +459,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, e
 	executingPlan.Store(true)
 
 	if ctx.Err() != nil {
-		return context.Cause(ctx)
+		return fmt.Errorf("execute release install plan: %w", context.Cause(ctx))
 	}
 
-	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(detachedCtx)
 	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	watchErrCh := make(chan error, 1)
