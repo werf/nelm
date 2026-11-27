@@ -10,8 +10,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	discfake "k8s.io/client-go/discovery/fake"
 	dynfake "k8s.io/client-go/dynamic/fake"
@@ -204,6 +207,106 @@ func TestKubeClientGVKToGVR_TimesOutOnRepeatedNoMatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "retry mapper NoMatch timed out after")
 	assert.Positive(t, mapper.resetCount)
 	assert.Equal(t, mapper.resetCount, discoveryClient.invalidateCount)
+}
+
+func TestKubeClientGet_TryCacheReadsAPIAfterFailedRequest(t *testing.T) {
+	requestErr := errors.New("exceeded quota")
+
+	cases := []struct {
+		name   string
+		verb   string
+		failFn func(client *KubeClient, resSpec *spec.ResourceSpec) error
+	}{
+		{
+			name: "apply",
+			verb: "patch",
+			failFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.Apply(context.Background(), resSpec, KubeClientApplyOptions{DefaultNamespace: "default"})
+				return err
+			},
+		},
+		{
+			name: "create",
+			verb: "patch",
+			failFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.Create(context.Background(), resSpec, KubeClientCreateOptions{DefaultNamespace: "default"})
+				return err
+			},
+		},
+		{
+			name: "merge patch",
+			verb: "patch",
+			failFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.MergePatch(context.Background(), resSpec.ResourceMeta, []byte(`{}`), KubeClientMergePatchOptions{DefaultNamespace: "default"})
+				return err
+			},
+		},
+		{
+			name: "get",
+			verb: "get",
+			failFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default"})
+				return err
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _, _ := newTestKubeClient(0)
+			dynamicClient := dynfake.NewSimpleDynamicClient(scheme.Scheme, &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "cm", Namespace: "default"},
+				Data:       map[string]string{"key": "value"},
+			})
+			failNext := false
+			dynamicClient.PrependReactor(tc.verb, "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+				if !failNext {
+					return false, nil, nil
+				}
+
+				failNext = false
+
+				return true, nil, requestErr
+			})
+			client.dynamicClient = dynamicClient
+
+			resSpec := spec.NewResourceSpec(&unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "ConfigMap",
+				"metadata":   map[string]interface{}{"name": "cm", "namespace": "default"},
+			}}, "default", spec.ResourceSpecOptions{})
+
+			_, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default"})
+			require.NoError(t, err)
+
+			failNext = true
+
+			require.Error(t, tc.failFn(client, resSpec))
+
+			obj, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+			require.NoError(t, err)
+
+			data, _, err := unstructured.NestedStringMap(obj.Object, "data")
+			require.NoError(t, err)
+			assert.Equal(t, map[string]string{"key": "value"}, data)
+		})
+	}
+}
+
+func TestKubeClientGet_TryCacheReturnsCachedNotFound(t *testing.T) {
+	client, _, _ := newTestKubeClient(0)
+	dynamicClient := dynfake.NewSimpleDynamicClient(scheme.Scheme)
+	client.dynamicClient = dynamicClient
+	meta := spec.NewResourceMeta("cm", "default", "default", "", schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, nil, nil)
+
+	_, err := client.Get(context.Background(), meta, KubeClientGetOptions{DefaultNamespace: "default"})
+	require.True(t, IsNotFoundErr(err))
+
+	dynamicClient.ClearActions()
+
+	_, err = client.Get(context.Background(), meta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+	require.True(t, IsNotFoundErr(err))
+	assert.Empty(t, dynamicClient.Actions())
 }
 
 func TestKubeClientNamespaced_RetriesNoMatchAfterRefresh(t *testing.T) {

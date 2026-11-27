@@ -306,8 +306,6 @@ func newStuckRevisionContext(t *testing.T) context.Context {
 	return ctx
 }
 
-// The failing resource has anyone-ownership: a failed apply caches its error in the client, and a
-// rollback that had to delete the resource would read that error back and fail as well.
 func newStuckRevisionFailingChart(t *testing.T, api *progressPhasesAPI) string {
 	t.Helper()
 
@@ -322,8 +320,6 @@ func newStuckRevisionFailingChart(t *testing.T, api *progressPhasesAPI) string {
 kind: ConfigMap
 metadata:
   name: failing-resource
-  annotations:
-    werf.io/ownership: anyone
 `), 0o600))
 
 	return chartPath

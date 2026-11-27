@@ -126,8 +126,10 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts
 	}
 
 	if err != nil {
+		// The object may or may not have changed, so the next cached Get must ask the API. Caching
+		// the error instead would fail everything that reads the resource afterwards, e.g. rollback.
 		if !opts.DryRun {
-			c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
+			c.clusterCache.Delete(resSpec.IDWithVersion())
 		}
 
 		return nil, fmt.Errorf("server-side %sapply resource %q: %w", lo.Ternary(opts.DryRun, "dry-run ", ""), resSpec.IDHuman(), err)
@@ -202,7 +204,7 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *spec.ResourceSpec, opt
 	}
 
 	if err != nil {
-		c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
+		c.clusterCache.Delete(resSpec.IDWithVersion())
 
 		return nil, fmt.Errorf("server-side apply resource %q: %w", resSpec.IDHuman(), err)
 	}
@@ -322,7 +324,9 @@ func (c *KubeClient) Get(ctx context.Context, resMeta *spec.ResourceMeta, opts K
 
 	resultObj, err := clientResource.Get(ctx, resMeta.Name, metav1.GetOptions{})
 	if err != nil {
-		c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
+		if IsNotFoundErr(err) {
+			c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
+		}
 
 		return nil, fmt.Errorf("get resource %q: %w", resMeta.IDHuman(), err)
 	}
@@ -363,9 +367,7 @@ func (c *KubeClient) MergePatch(ctx context.Context, resMeta *spec.ResourceMeta,
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
-		if !IsNotFoundErr(err) {
-			c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
-		}
+		c.clusterCache.Delete(resMeta.IDWithVersion())
 
 		return nil, fmt.Errorf("merge patch resource %q: %w", resMeta.IDHuman(), err)
 	}
