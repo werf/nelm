@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
@@ -44,7 +45,12 @@ func init() {
 	styles.Register(style)
 }
 
-const syntaxHighlightThemeName = "solarized-dark-customized"
+const (
+	// Lets the failure handling hit its own timeout and report it before the action gives up waiting
+	// for it.
+	failureHandlingTimeoutGrace = 10 * time.Second
+	syntaxHighlightThemeName    = "solarized-dark-customized"
+)
 
 var syntaxHighlightTheme = fmt.Sprintf(`
 <style name=%q>
@@ -377,6 +383,16 @@ func loadDeployedAndPendingReleasesWith(ctx context.Context, history *release.Hi
 	}
 
 	return rels, nil
+}
+
+// The failure plan and auto-rollback must still run after the deploy is canceled or timed out, so
+// they run on trackingCtx, which ignores that cancellation, and get a timeout of their own.
+func newFailureContext(trackingCtx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout == 0 {
+		return context.WithCancel(trackingCtx)
+	}
+
+	return context.WithTimeoutCause(trackingCtx, timeout, fmt.Errorf("context timed out: failure handling timed out after %s", timeout.String()))
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {

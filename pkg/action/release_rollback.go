@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/gookit/color"
@@ -99,7 +100,8 @@ type ReleaseRollbackOptions struct {
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
-	// Timeout is the maximum duration for the entire rollback operation.
+	// Timeout is the maximum duration of the rollback. If the rollback fails, is canceled or times
+	// out, the failure plan gets the same duration again.
 	// If 0, no timeout is applied and the operation runs until completion or error.
 	Timeout time.Duration
 }
@@ -109,28 +111,43 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
-		return releaseRollback(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		return releaseRollback(ctx, ctxCancelFn, context.WithoutCancel(ctx), &atomic.Bool{}, releaseName, releaseNamespace, opts)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
+	// The failure plan outlives the timeout, but not this function.
+	detachedCtx, detachedCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer detachedCtxCancelFn(fmt.Errorf("context canceled: action finished"))
+
+	executingPlan := &atomic.Bool{}
+
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseRollback(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		actionCh <- releaseRollback(ctx, ctxCancelFn, detachedCtx, executingPlan, releaseName, releaseNamespace, opts)
 	}()
 
-	for {
-		select {
-		case err := <-actionCh:
-			return err
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		}
+	select {
+	case err := <-actionCh:
+		return err
+	case <-ctx.Done():
+	}
+
+	// A canceled plan execution is followed by the failure plan, which has a timeout of its own.
+	if !executingPlan.Load() {
+		return context.Cause(ctx)
+	}
+
+	select {
+	case err := <-actionCh:
+		return err
+	case <-time.After(opts.Timeout + failureHandlingTimeoutGrace):
+		return context.Cause(ctx)
 	}
 }
 
-func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
+func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, detachedCtx context.Context, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home directory: %w", err)
@@ -437,8 +454,19 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
+
+	// Set before the check: if the timeout wrapper has already given up, this check sees it.
+	executingPlan.Store(true)
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("execute release install plan: %w", context.Cause(ctx))
+	}
+
+	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(detachedCtx)
+	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
+
 	watchErrCh := make(chan error, 1)
-	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
+	informerFactory := newInformerFactory(trackingCtx, watchErrCh, clientFactory.Dynamic())
 
 	log.Default.Debug(ctx, "Start tracking")
 
@@ -447,9 +475,11 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 			select {
 			case err := <-watchErrCh:
 				if err != nil {
-					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+					err = fmt.Errorf("context canceled: watch error: %w", err)
+					ctxCancelFn(err)
+					trackingCtxCancelFn(err)
 				}
-			case <-ctx.Done():
+			case <-trackingCtx.Done():
 				return
 			}
 		}
@@ -460,7 +490,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
 			DefaultNamespace: releaseNamespace,
 		})
-		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
+		progressPrinter.Start(trackingCtx, opts.ProgressTablePrintInterval)
 	}
 
 	criticalErrs := &util.MultiError{}
@@ -494,7 +524,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	})
 
 	if executePlanErr != nil {
-		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+		failureCtx, failureCtxCancelFn := newFailureContext(trackingCtx, opts.Timeout)
+		defer failureCtxCancelFn()
+
+		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(failureCtx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			TrackingOptions:    opts.TrackingOptions,
 			NetworkParallelism: opts.NetworkParallelism,
 		})
@@ -508,6 +541,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 		}
 	}
+
+	executingPlan.Store(false)
 
 	if !opts.NoProgressTablePrint {
 		progressPrinter.Stop()

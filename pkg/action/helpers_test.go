@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,7 +57,20 @@ import (
 	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
-const secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
+const (
+	// Applied after kept-resource. Anyone-ownership keeps a rollback from reading the cached error of
+	// its canceled apply.
+	canceledResourceManifest = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: canceled-resource
+  namespace: progress-ns
+  annotations:
+    werf.io/ownership: anyone
+    werf.io/weight: "10"
+`
+	secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
+)
 
 type latestReleaseListLoads struct {
 	errs      []error
@@ -466,6 +480,21 @@ func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int
 	addProgressPhaseRevisionWithStatus(t, api, revision, manifest, helmreleasestatus.StatusDeployed)
 }
 
+func newCanceledDeployChart(t *testing.T, api *progressPhasesAPI, keptManifest string) string {
+	t.Helper()
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.allowApply = true
+	})
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "kept.yaml"), []byte(strings.Replace(keptManifest, `"key":"value"`, `"key":"changed"`, 1)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "canceled.yaml"), []byte(canceledResourceManifest), 0o600))
+
+	return chartPath
+}
+
 func newChartCopyTestRegistry(t *testing.T) string {
 	t.Helper()
 
@@ -726,6 +755,19 @@ func addReleaseConfigMap(t *testing.T, api *progressPhasesAPI, name string, anno
 	return string(body)
 }
 
+func appliedKeptResourceValues(api *progressPhasesAPI) []string {
+	var values []string
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		for _, cm := range s.appliedConfigMaps {
+			if cm.Name == "kept-resource" {
+				values = append(values, cm.Data["key"])
+			}
+		}
+	})
+
+	return values
+}
+
 // buildChartCopyTestChart returns a chart archive with the files under the app directory.
 func buildChartCopyTestChart(t *testing.T, files map[string]string) []byte {
 	t.Helper()
@@ -744,6 +786,16 @@ func buildChartCopyTestChart(t *testing.T, files map[string]string) []byte {
 	require.NoError(t, gzipWriter.Close())
 
 	return buf.Bytes()
+}
+
+func cancelOnRequest(cancel context.CancelFunc, method string) func(r *http.Request) {
+	var cancelOnce sync.Once
+
+	return func(r *http.Request) {
+		if r.Method == method && r.URL.Query().Get("dryRun") == "" && filepath.Base(r.URL.Path) == "canceled-resource" {
+			cancelOnce.Do(cancel)
+		}
+	}
 }
 
 func chartCopyTestBlobPath(dgst digest.Digest) string {

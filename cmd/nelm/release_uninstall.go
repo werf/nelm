@@ -40,6 +40,8 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				LogWidth:  cfg.LogWidth,
 			})
 
+			ctx = cancelOnFirstSignal(ctx)
+
 			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseUninstallOptions); err != nil {
 				return fmt.Errorf("release uninstall: %w", err)
 			}
@@ -119,7 +121,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.Timeout, "timeout", 0, "Fail if not finished in time", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.Timeout, "timeout", 0, "Fail if not finished in time. On failure, cleanup gets the same time again", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {

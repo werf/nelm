@@ -48,6 +48,8 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				LogWidth:  cfg.LogWidth,
 			})
 
+			ctx = cancelOnFirstSignal(ctx)
+
 			if len(args) > 0 {
 				cfg.Chart = args[0]
 			}
@@ -292,7 +294,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.Timeout, "timeout", 0, "Fail if not finished in time", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.Timeout, "timeout", 0, "Fail if not finished in time. On failure, cleanup and auto-rollback get the same time again", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {
