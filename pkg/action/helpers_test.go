@@ -58,15 +58,13 @@ import (
 )
 
 const (
-	// Applied after kept-resource. Anyone-ownership keeps a rollback from reading the cached error of
-	// its canceled apply.
+	// Applied after kept-resource.
 	canceledResourceManifest = `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: canceled-resource
   namespace: progress-ns
   annotations:
-    werf.io/ownership: anyone
     werf.io/weight: "10"
 `
 	secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
