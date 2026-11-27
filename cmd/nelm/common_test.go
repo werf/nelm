@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 import (
@@ -19,7 +21,7 @@ import (
 
 const cancelOnFirstSignalHelperEnv = "NELM_TEST_CANCEL_ON_FIRST_SIGNAL_HELPER"
 
-func TestCancelOnFirstSignal_FirstSignalCancelsSecondTerminates(t *testing.T) {
+func TestCancelOnFirstSignal_FirstSignalCancelsSecondExits(t *testing.T) {
 	if os.Getenv(cancelOnFirstSignalHelperEnv) != "" {
 		ctx := cancelOnFirstSignal(logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard)))
 
@@ -32,16 +34,15 @@ func TestCancelOnFirstSignal_FirstSignalCancelsSecondTerminates(t *testing.T) {
 
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
 		t.Run(sig.String(), func(t *testing.T) {
-			cmd := exec.Command(os.Args[0], "-test.run=^TestCancelOnFirstSignal_FirstSignalCancelsSecondTerminates$") //nolint:gosec // G204: re-runs this test binary as the helper process
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCancelOnFirstSignal_FirstSignalCancelsSecondExits$") //nolint:gosec // G204: re-runs this test binary as the helper process
 
 			cmd.Env = append(os.Environ(), cancelOnFirstSignalHelperEnv+"=1")
 			stdout, err := cmd.StdoutPipe()
 			require.NoError(t, err)
 			require.NoError(t, cmd.Start())
-
-			t.Cleanup(func() {
-				_ = cmd.Process.Kill()
-			})
 
 			lines := bufio.NewScanner(stdout)
 			require.True(t, lines.Scan())
@@ -53,23 +54,10 @@ func TestCancelOnFirstSignal_FirstSignalCancelsSecondTerminates(t *testing.T) {
 
 			require.NoError(t, cmd.Process.Signal(sig))
 
-			waitErrCh := make(chan error, 1)
-			go func() {
-				waitErrCh <- cmd.Wait()
-			}()
-
-			select {
-			case err := <-waitErrCh:
-				var exitErr *exec.ExitError
-				require.ErrorAs(t, err, &exitErr)
-
-				status, ok := exitErr.Sys().(syscall.WaitStatus)
-				require.True(t, ok)
-				assert.True(t, status.Signaled())
-				assert.Equal(t, sig, status.Signal())
-			case <-time.After(10 * time.Second):
-				t.Fatal("the second signal must terminate the process")
-			}
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, cmd.Wait(), &exitErr)
+			assert.Equal(t, 128+int(sig), exitErr.ExitCode())
+			require.NoError(t, ctx.Err(), "the second signal must exit the process")
 		})
 	}
 }

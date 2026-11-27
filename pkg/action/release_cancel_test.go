@@ -3,7 +3,6 @@ package action
 import (
 	"context"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -16,18 +15,10 @@ import (
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
-const canceledResourceManifest = `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: canceled-resource
-  namespace: progress-ns
-  annotations:
-    werf.io/ownership: anyone
-`
-
 func TestReleaseInstall_CanceledDeployRunsFailurePlanAndAutoRollback(t *testing.T) {
 	api := newProgressPhasesAPI(t)
-	addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
+	keptManifest := addReleaseConfigMap(t, api, "kept-resource", nil)
+	addProgressPhaseRevision(t, api, 1, keptManifest)
 
 	ctx, cancel := context.WithCancel(newStuckRevisionContext(t))
 	defer cancel()
@@ -35,7 +26,7 @@ func TestReleaseInstall_CanceledDeployRunsFailurePlanAndAutoRollback(t *testing.
 	api.onRequest = cancelOnRequest(cancel, http.MethodPatch)
 
 	opts := newStuckRevisionInstallOptions(t, api)
-	opts.Chart = newCanceledDeployChart(t, api)
+	opts.Chart = newCanceledDeployChart(t, api, keptManifest)
 	opts.AutoRollback = true
 
 	_, err := ReleaseInstall(ctx, "progress-release", "progress-ns", opts)
@@ -46,35 +37,43 @@ func TestReleaseInstall_CanceledDeployRunsFailurePlanAndAutoRollback(t *testing.
 		2: helmreleasestatus.StatusFailed,
 		3: helmreleasestatus.StatusDeployed,
 	}, progressPhaseRevisionStatuses(t, newStuckRevisionContext(t), api))
+	assert.Equal(t, []string{"changed", "value"}, appliedKeptResourceValues(api), "the deploy must change the resource and the rollback must restore it")
 }
 
 func TestReleaseInstall_TimedOutDeployRunsFailurePlanAndAutoRollback(t *testing.T) {
 	api := newProgressPhasesAPI(t)
-	addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
+	keptManifest := addReleaseConfigMap(t, api, "kept-resource", nil)
+	addProgressPhaseRevision(t, api, 1, keptManifest)
 
-	var delayOnce sync.Once
+	unblockCh := make(chan struct{})
+	t.Cleanup(func() {
+		close(unblockCh)
+	})
+
+	var blockOnce sync.Once
 
 	api.onRequest = func(r *http.Request) {
 		if r.Method == http.MethodPatch && r.URL.Query().Get("dryRun") == "" && filepath.Base(r.URL.Path) == "canceled-resource" {
-			delayOnce.Do(func() {
-				time.Sleep(3 * time.Second)
+			blockOnce.Do(func() {
+				<-unblockCh
 			})
 		}
 	}
 
 	opts := newStuckRevisionInstallOptions(t, api)
-	opts.Chart = newCanceledDeployChart(t, api)
+	opts.Chart = newCanceledDeployChart(t, api, keptManifest)
 	opts.AutoRollback = true
-	opts.Timeout = 2 * time.Second
+	opts.Timeout = 5 * time.Second
 
 	_, err := ReleaseInstall(newStuckRevisionContext(t), "progress-release", "progress-ns", opts)
-	require.Error(t, err)
+	require.ErrorContains(t, err, "action timed out after 5s")
 
 	assert.Equal(t, map[int]helmreleasestatus.Status{
 		1: helmreleasestatus.StatusSuperseded,
 		2: helmreleasestatus.StatusFailed,
 		3: helmreleasestatus.StatusDeployed,
 	}, progressPhaseRevisionStatuses(t, newStuckRevisionContext(t), api))
+	assert.Equal(t, []string{"changed", "value"}, appliedKeptResourceValues(api), "the deploy must change the resource and the rollback must restore it")
 }
 
 func TestReleaseRollback_CanceledRollbackRunsFailurePlan(t *testing.T) {
@@ -111,7 +110,7 @@ func TestReleaseUninstall_CanceledUninstallRunsFailurePlan(t *testing.T) {
 	api.state.RWTransaction(func(s *progressPhasesAPIState) {
 		s.retainNamespace = true
 	})
-	addProgressPhaseRevisionWithStatus(t, api, 1, addReleaseConfigMap(t, api, "canceled-resource", nil), helmreleasestatus.StatusDeployed)
+	addProgressPhaseRevision(t, api, 1, addReleaseConfigMap(t, api, "canceled-resource", nil))
 
 	ctx, cancel := context.WithCancel(newStuckRevisionContext(t))
 	defer cancel()
@@ -131,28 +130,4 @@ func TestReleaseUninstall_CanceledUninstallRunsFailurePlan(t *testing.T) {
 	assert.Equal(t, map[int]helmreleasestatus.Status{
 		1: helmreleasestatus.StatusFailed,
 	}, progressPhaseRevisionStatuses(t, newStuckRevisionContext(t), api))
-}
-
-func cancelOnRequest(cancel context.CancelFunc, method string) func(r *http.Request) {
-	var cancelOnce sync.Once
-
-	return func(r *http.Request) {
-		if r.Method == method && r.URL.Query().Get("dryRun") == "" && filepath.Base(r.URL.Path) == "canceled-resource" {
-			cancelOnce.Do(cancel)
-		}
-	}
-}
-
-func newCanceledDeployChart(t *testing.T, api *progressPhasesAPI) string {
-	t.Helper()
-
-	api.state.RWTransaction(func(s *progressPhasesAPIState) {
-		s.allowApply = true
-	})
-
-	chartPath := newProgressPhasesChart(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(canceledResourceManifest), 0o600))
-
-	return chartPath
 }

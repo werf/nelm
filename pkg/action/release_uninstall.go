@@ -375,6 +375,13 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}
 
+		// Set before the check: if the timeout wrapper has already given up, this check sees it.
+		executingPlan.Store(true)
+
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
+
 		taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 		logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 
@@ -396,8 +403,6 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
-
-		executingPlan.Store(true)
 
 		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 			LegacyProgressReporter: reporter,
@@ -452,7 +457,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		if reporter != nil {
-			reporter.ReportCheckpoint(ctx)
+			reporter.ReportCheckpoint(trackingCtx)
 		}
 
 		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {

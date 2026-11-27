@@ -27,20 +27,20 @@ func allowedLogLevelsHelp() string {
 }
 
 // The first SIGINT or SIGTERM cancels the returned context, which lets the action run its failure
-// plan and auto-rollback. The default signal handling is then restored, so the next signal
-// terminates the process.
+// plan and auto-rollback. The second one exits the process right away.
 func cancelOnFirstSignal(ctx context.Context) context.Context {
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
-	signalCh := make(chan os.Signal, 1)
+	signalCh := make(chan os.Signal, 2)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		sig := <-signalCh
-		signal.Stop(signalCh)
-
-		log.Default.Warn(ctx, "Received signal %q, canceling. Send it again to exit immediately", sig.String())
 		ctxCancelFn(fmt.Errorf("context canceled: received signal %q", sig.String()))
+		log.Default.Warn(ctx, "Received signal %q, canceling. Send it again to exit immediately", sig.String())
+
+		sig = <-signalCh
+		os.Exit(128 + int(sig.(syscall.Signal)))
 	}()
 
 	return ctx

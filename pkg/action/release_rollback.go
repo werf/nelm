@@ -451,6 +451,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, e
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 
+	// Set before the check: if the timeout wrapper has already given up, this check sees it.
+	executingPlan.Store(true)
+
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
+
 	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
 	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
@@ -486,8 +493,6 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, e
 	nonCriticalErrs := &util.MultiError{}
 
 	log.Default.Debug(ctx, "Execute release install plan")
-
-	executingPlan.Store(true)
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 		TrackingOptions:          opts.TrackingOptions,

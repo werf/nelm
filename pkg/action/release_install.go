@@ -783,6 +783,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, ex
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 
+	// Set before the check: if the timeout wrapper has already given up, this check sees it.
+	executingPlan.Store(true)
+
+	if ctx.Err() != nil {
+		return nil, context.Cause(ctx)
+	}
+
 	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
 	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
 
@@ -818,8 +825,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, ex
 	nonCriticalErrs := &util.MultiError{}
 
 	log.Default.Debug(ctx, "Execute release install plan")
-
-	executingPlan.Store(true)
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 		LegacyProgressReporter:   reporter,
@@ -894,7 +899,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, ex
 	}
 
 	if reporter != nil {
-		reporter.ReportCheckpoint(ctx)
+		reporter.ReportCheckpoint(trackingCtx)
 	}
 
 	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
