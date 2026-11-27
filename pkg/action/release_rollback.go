@@ -542,8 +542,6 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, d
 		}
 	}
 
-	executingPlan.Store(false)
-
 	if !opts.NoProgressTablePrint {
 		progressPrinter.Stop()
 		progressPrinter.Wait()
@@ -577,6 +575,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, d
 	}
 
 	printReport(ctx, report)
+
+	executingPlan.Store(false)
 
 	if opts.RollbackReportPath != "" {
 		if err := saveReport(opts.RollbackReportPath, report); err != nil {

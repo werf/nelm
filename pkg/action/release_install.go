@@ -895,8 +895,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, de
 		}
 	}
 
-	executingPlan.Store(false)
-
 	if !opts.NoProgressTablePrint {
 		progressPrinter.Stop()
 		progressPrinter.Wait()
@@ -934,6 +932,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, de
 	}
 
 	printReport(ctx, report)
+
+	executingPlan.Store(false)
 
 	if opts.InstallReportPath != "" {
 		if err := saveReport(opts.InstallReportPath, report); err != nil {
