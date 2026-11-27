@@ -22,6 +22,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/featgate"
 	"github.com/werf/nelm/v2/pkg/kube/fake"
 	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 func TestAdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
@@ -247,6 +248,40 @@ func TestFilterDelResourcesPresentInInstResources(t *testing.T) {
 			}))
 		})
 	}
+}
+
+func TestFixManagedFieldsNoApplyEntryInDryRunResult(t *testing.T) {
+	cf, err := fake.NewClientFactory(context.Background())
+	require.NoError(t, err)
+
+	// The API server records no apply entry for a manifest that has only identity fields.
+	cf.Dynamic().(*dynamicfake.FakeDynamicClient).PrependReactor("patch", "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata":   map[string]interface{}{"name": "bare", "namespace": "default"},
+		}}, nil
+	})
+
+	resSpec := makeResourceSpec("bare", "default", gvkConfigMap)
+	resSpec.Unstruct = &unstructured.Unstructured{Object: map[string]interface{}{}}
+	resSpec.Unstruct.SetGroupVersionKind(gvkConfigMap)
+	resSpec.Unstruct.SetName("bare")
+	resSpec.Unstruct.SetNamespace("default")
+
+	liveObj := resSpec.Unstruct.DeepCopy()
+	liveObj.SetManagedFields([]v1.ManagedFieldsEntry{
+		testAIManagedFieldsEntry(common.DefaultFieldManager, v1.ManagedFieldsOperationUpdate, `{"f:metadata":{"f:labels":{"f:app.kubernetes.io/managed-by":{}}}}`),
+	})
+
+	changed, err := fixManagedFields(context.Background(), liveObj, &resource.InstallableResource{ResourceSpec: resSpec}, false, "default", cf, []*spec.ResourceSpec{resSpec})
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	managedFields := liveObj.GetManagedFields()
+	require.Len(t, managedFields, 1)
+	assert.Equal(t, v1.ManagedFieldsOperationApply, managedFields[0].Operation)
+	assert.JSONEq(t, `{"f:metadata":{"f:labels":{"f:app.kubernetes.io/managed-by":{}}}}`, string(managedFields[0].FieldsV1.Raw))
 }
 
 func TestIterateInstallableResourceInfos(t *testing.T) {

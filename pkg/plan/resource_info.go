@@ -575,7 +575,8 @@ func fixHelmUpdateManagedFields(ctx context.Context, localRes *resource.Installa
 		return e.Manager == common.DefaultFieldManager && e.Operation == v1.ManagedFieldsOperationApply
 	})
 	if !found {
-		return nil, false, fmt.Errorf("find apply managed fields entry in dry-run result")
+		// Server-side apply records no entry if the manifest owns no fields, e.g. it has only identity fields.
+		return origFields, false, nil
 	}
 
 	resurrectedFieldsBytes, err := json.Marshal(fixedEntry.FieldsV1)
