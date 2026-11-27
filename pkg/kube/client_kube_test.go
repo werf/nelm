@@ -10,8 +10,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	discfake "k8s.io/client-go/discovery/fake"
 	dynfake "k8s.io/client-go/dynamic/fake"
@@ -204,6 +207,189 @@ func TestKubeClientGVKToGVR_TimesOutOnRepeatedNoMatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "retry mapper NoMatch timed out after")
 	assert.Positive(t, mapper.resetCount)
 	assert.Equal(t, mapper.resetCount, discoveryClient.invalidateCount)
+}
+
+func TestKubeClientGet_DoesNotCacheFailedGet(t *testing.T) {
+	client, dynamicClient, resSpec := newTestKubeClientWithConfigMap()
+	requestErr := errors.New("connection reset")
+	failNext := true
+	dynamicClient.PrependReactor("get", "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+		if !failNext {
+			return false, nil, nil
+		}
+
+		failNext = false
+
+		return true, nil, requestErr
+	})
+
+	_, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default"})
+	require.ErrorIs(t, err, requestErr)
+
+	obj, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+	require.NoError(t, err)
+	assert.Equal(t, "value", obj.Object["data"].(map[string]interface{})["key"])
+}
+
+func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	requestErr := errors.New("context deadline exceeded")
+	notFoundErr := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Code: 404, Reason: metav1.StatusReasonNotFound}}
+	changeObj := func(tracker ktesting.ObjectTracker) error {
+		return tracker.Update(gvr, &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata":   map[string]interface{}{"name": "cm", "namespace": "default"},
+			"data":       map[string]interface{}{"key": "changed"},
+		}}, "default")
+	}
+	deleteObj := func(tracker ktesting.ObjectTracker) error {
+		return tracker.Delete(gvr, "default", "cm")
+	}
+
+	cases := []struct {
+		name        string
+		verb        string
+		changeFn    func(tracker ktesting.ObjectTracker) error
+		reactErr    error
+		callFn      func(client *KubeClient, resSpec *spec.ResourceSpec) error
+		wantCallErr bool
+		wantData    string
+	}{
+		{
+			name:     "apply",
+			verb:     "patch",
+			changeFn: changeObj,
+			reactErr: requestErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.Apply(context.Background(), resSpec, KubeClientApplyOptions{DefaultNamespace: "default"})
+
+				return err
+			},
+			wantCallErr: true,
+			wantData:    "changed",
+		},
+		{
+			name:     "create",
+			verb:     "patch",
+			changeFn: changeObj,
+			reactErr: requestErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.Create(context.Background(), resSpec, KubeClientCreateOptions{DefaultNamespace: "default"})
+
+				return err
+			},
+			wantCallErr: true,
+			wantData:    "changed",
+		},
+		{
+			name:     "merge patch",
+			verb:     "patch",
+			changeFn: changeObj,
+			reactErr: requestErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.MergePatch(context.Background(), resSpec.ResourceMeta, []byte(`{}`), KubeClientMergePatchOptions{DefaultNamespace: "default"})
+
+				return err
+			},
+			wantCallErr: true,
+			wantData:    "changed",
+		},
+		{
+			name:     "merge patch of a missing resource",
+			verb:     "patch",
+			changeFn: deleteObj,
+			reactErr: notFoundErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				_, err := client.MergePatch(context.Background(), resSpec.ResourceMeta, []byte(`{}`), KubeClientMergePatchOptions{DefaultNamespace: "default"})
+
+				return err
+			},
+			wantCallErr: true,
+		},
+		{
+			name:     "delete",
+			verb:     "delete",
+			changeFn: deleteObj,
+			reactErr: requestErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				return client.Delete(context.Background(), resSpec.ResourceMeta, KubeClientDeleteOptions{DefaultNamespace: "default"})
+			},
+			wantCallErr: true,
+		},
+		{
+			name:     "delete of a missing resource",
+			verb:     "delete",
+			changeFn: deleteObj,
+			reactErr: notFoundErr,
+			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
+				return client.Delete(context.Background(), resSpec.ResourceMeta, KubeClientDeleteOptions{DefaultNamespace: "default"})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, dynamicClient, resSpec := newTestKubeClientWithConfigMap()
+			failNext := false
+			dynamicClient.PrependReactor(tc.verb, "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+				if !failNext {
+					return false, nil, nil
+				}
+
+				failNext = false
+
+				if err := tc.changeFn(dynamicClient.Tracker()); err != nil {
+					return true, nil, err
+				}
+
+				return true, nil, tc.reactErr
+			})
+
+			_, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default"})
+			require.NoError(t, err)
+
+			failNext = true
+
+			if err := tc.callFn(client, resSpec); tc.wantCallErr {
+				require.ErrorIs(t, err, tc.reactErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			dynamicClient.ClearActions()
+
+			obj, err := client.Get(context.Background(), resSpec.ResourceMeta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+
+			require.Len(t, dynamicClient.Actions(), 1)
+			assert.Equal(t, "get", dynamicClient.Actions()[0].GetVerb())
+
+			if tc.wantData == "" {
+				require.True(t, IsNotFoundErr(err), "want NotFound, got %v", err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantData, obj.Object["data"].(map[string]interface{})["key"])
+		})
+	}
+}
+
+func TestKubeClientGet_TryCacheReturnsCachedNotFound(t *testing.T) {
+	client, _, _ := newTestKubeClient(0)
+	dynamicClient := dynfake.NewSimpleDynamicClient(scheme.Scheme)
+	client.dynamicClient = dynamicClient
+	meta := spec.NewResourceMeta("cm", "default", "default", "", schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}, nil, nil)
+
+	_, err := client.Get(context.Background(), meta, KubeClientGetOptions{DefaultNamespace: "default"})
+	require.True(t, IsNotFoundErr(err))
+
+	dynamicClient.ClearActions()
+
+	_, err = client.Get(context.Background(), meta, KubeClientGetOptions{DefaultNamespace: "default", TryCache: true})
+	require.True(t, IsNotFoundErr(err))
+	assert.Empty(t, dynamicClient.Actions())
 }
 
 func TestKubeClientNamespaced_RetriesNoMatchAfterRefresh(t *testing.T) {
