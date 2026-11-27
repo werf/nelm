@@ -263,6 +263,7 @@ func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
 			reactErr: requestErr,
 			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
 				_, err := client.Apply(context.Background(), resSpec, KubeClientApplyOptions{DefaultNamespace: "default"})
+
 				return err
 			},
 			wantCallErr: true,
@@ -275,6 +276,7 @@ func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
 			reactErr: requestErr,
 			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
 				_, err := client.Create(context.Background(), resSpec, KubeClientCreateOptions{DefaultNamespace: "default"})
+
 				return err
 			},
 			wantCallErr: true,
@@ -287,6 +289,7 @@ func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
 			reactErr: requestErr,
 			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
 				_, err := client.MergePatch(context.Background(), resSpec.ResourceMeta, []byte(`{}`), KubeClientMergePatchOptions{DefaultNamespace: "default"})
+
 				return err
 			},
 			wantCallErr: true,
@@ -299,6 +302,7 @@ func TestKubeClientGet_TryCacheReadsAPIAfterFailedWrite(t *testing.T) {
 			reactErr: notFoundErr,
 			callFn: func(client *KubeClient, resSpec *spec.ResourceSpec) error {
 				_, err := client.MergePatch(context.Background(), resSpec.ResourceMeta, []byte(`{}`), KubeClientMergePatchOptions{DefaultNamespace: "default"})
+
 				return err
 			},
 			wantCallErr: true,
