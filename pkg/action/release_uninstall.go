@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/gookit/color"
@@ -88,7 +89,8 @@ type ReleaseUninstallOptions struct {
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
-	// Timeout is the maximum duration for the entire uninstall operation.
+	// Timeout is the maximum duration of the uninstall. If the uninstall fails, is canceled or times
+	// out, the failure plan gets the same duration again.
 	// If 0, no timeout is applied and the operation runs until completion or error.
 	Timeout time.Duration
 	// UninstallGraphPath, if specified, saves the Graphviz representation of the uninstall plan to this file path.
@@ -118,27 +120,38 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}()
 
 	if opts.Timeout == 0 {
-		return releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
+		return releaseUninstall(ctx, ctxCancelFn, &atomic.Bool{}, releaseName, releaseNamespace, opts, reporter)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 
+	executingPlan := &atomic.Bool{}
+
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
+		actionCh <- releaseUninstall(ctx, ctxCancelFn, executingPlan, releaseName, releaseNamespace, opts, reporter)
 	}()
 
-	for {
-		select {
-		case err := <-actionCh:
-			return err
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		}
+	select {
+	case err := <-actionCh:
+		return err
+	case <-ctx.Done():
+	}
+
+	// A canceled plan execution is followed by the failure plan, which has a timeout of its own.
+	if !executingPlan.Load() {
+		return context.Cause(ctx)
+	}
+
+	select {
+	case err := <-actionCh:
+		return err
+	case <-time.After(opts.Timeout + failureHandlingTimeoutGrace):
+		return context.Cause(ctx)
 	}
 }
 
-func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseUninstallOptions, reporter *plan.LegacyProgressReporter) error {
+func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, executingPlan *atomic.Bool, releaseName, releaseNamespace string, opts ReleaseUninstallOptions, reporter *plan.LegacyProgressReporter) error {
 	var phaseReporter *plan.LegacyProgressReporter
 	if reporter != nil {
 		defer reporter.Stop(ctx)
@@ -200,17 +213,22 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return nil
 	}
 
+	trackingCtx, trackingCtxCancelFn := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer trackingCtxCancelFn(fmt.Errorf("context canceled: action finished"))
+
 	watchErrCh := make(chan error, 1)
-	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
+	informerFactory := newInformerFactory(trackingCtx, watchErrCh, clientFactory.Dynamic())
 
 	go func() {
 		for {
 			select {
 			case err := <-watchErrCh:
 				if err != nil {
-					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+					err = fmt.Errorf("context canceled: watch error: %w", err)
+					ctxCancelFn(err)
+					trackingCtxCancelFn(err)
 				}
-			case <-ctx.Done():
+			case <-trackingCtx.Done():
 				return
 			}
 		}
@@ -367,7 +385,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
 				DefaultNamespace: releaseNamespace,
 			})
-			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
+			progressPrinter.Start(trackingCtx, opts.ProgressTablePrintInterval)
 		}
 
 		criticalErrs := &util.MultiError{}
@@ -378,6 +396,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
+
+		executingPlan.Store(true)
 
 		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 			LegacyProgressReporter: reporter,
@@ -405,7 +425,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		})
 
 		if executePlanErr != nil {
-			runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, deletePlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+			failureCtx, failureCtxCancelFn := newFailureContext(trackingCtx, opts.Timeout)
+			defer failureCtxCancelFn()
+
+			runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(failureCtx, releaseNamespace, deletePlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 				LegacyProgressReporter: reporter,
 				TrackingOptions:        opts.TrackingOptions,
 				NetworkParallelism:     opts.NetworkParallelism,
@@ -420,6 +443,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 				failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 			}
 		}
+
+		executingPlan.Store(false)
 
 		if !opts.NoProgressTablePrint {
 			progressPrinter.Stop()

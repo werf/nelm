@@ -201,7 +201,7 @@ nelm release install [options...] [-n namespace] [-r release] [chart-dir|chart-r
 
 - `--timeout` (default: `0s`)
 
-  Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_TIMEOUT
+  Fail if not finished in time\. On failure, cleanup and auto\-rollback get the same time again\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_TIMEOUT
 
 - `--use-plan` (default: `""`)
 
@@ -616,7 +616,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 - `--timeout` (default: `0s`)
 
-  Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_ROLLBACK\_TIMEOUT
+  Fail if not finished in time\. On failure, cleanup gets the same time again\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_ROLLBACK\_TIMEOUT
 
 
 **Resource validation options:**
@@ -1302,7 +1302,7 @@ nelm release uninstall [options...] -n namespace -r release
 
 - `--timeout` (default: `0s`)
 
-  Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_UNINSTALL\_TIMEOUT
+  Fail if not finished in time\. On failure, cleanup gets the same time again\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_UNINSTALL\_TIMEOUT
 
 
 **Patch options:**

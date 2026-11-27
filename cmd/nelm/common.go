@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -19,4 +24,24 @@ func allowedLogLevelsHelp() string {
 	return "Allowed: " + strings.Join(lo.Map(log.Levels, func(lvl log.Level, _ int) string {
 		return string(lvl)
 	}), ", ")
+}
+
+// The first SIGINT or SIGTERM cancels the returned context, which lets the action run its failure
+// plan and auto-rollback. The default signal handling is then restored, so the next signal
+// terminates the process.
+func cancelOnFirstSignal(ctx context.Context) context.Context {
+	ctx, ctxCancelFn := context.WithCancelCause(ctx)
+
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		sig := <-signalCh
+		signal.Stop(signalCh)
+
+		log.Default.Warn(ctx, "Received signal %q, canceling. Send it again to exit immediately", sig.String())
+		ctxCancelFn(fmt.Errorf("context canceled: received signal %q", sig.String()))
+	}()
+
+	return ctx
 }
